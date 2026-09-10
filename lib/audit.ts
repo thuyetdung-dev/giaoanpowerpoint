@@ -1,0 +1,470 @@
+/**
+ * lib/audit.ts — Kiểm định & sửa chữa dữ liệu bài giảng (V11)
+ *
+ * Điểm yếu chí mạng của V10: hàm repairLesson() TỰ BỊA dữ liệu toán học.
+ *   v.derivative = Array.from({length: expected}, (_, i) => v.derivative?.[i] ?? (i % 2 ? "0" : "+"))
+ * Nghĩa là khi AI trả thiếu dấu, phần mềm điền "+ 0 + 0 +" rồi... báo "Đạt".
+ * Giáo viên nhận được bảng biến thiên SAI nhưng mang nhãn xanh. Đây là rủi ro
+ * chuyên môn lớn nhất của phần mềm.
+ *
+ * V11 đảo ngược nguyên tắc:
+ *   - Không bao giờ bịa dấu đạo hàm hay giá trị. Thiếu thì đánh dấu "?" + báo lỗi.
+ *   - Nếu có `expression`, TÍNH LẠI bảng biến thiên bằng đạo hàm số học và đối
+ *     chiếu với dữ liệu AI (kiểm định chéo).
+ *   - Phân biệt rõ: lỗi (chặn xuất) / cảnh báo (vẫn xuất được) / gợi ý sư phạm.
+ */
+
+import type {
+  Lesson, Visual, VariationVisual, GraphVisual, StatChartVisual,
+  BoxPlotVisual, ProbTreeVisual, RegionVisual, Section,
+} from "./types";
+import { compileExpression, numericDerivative, evalAt, detectPoles } from "./mathexpr";
+import { latexToUnicode, mixedLatexToUnicode } from "./latex";
+
+export type AuditLevel = "error" | "warning" | "tip" | "ok";
+export type AuditItem = {
+  level: AuditLevel;
+  code: string;
+  message: string;
+  /** Hướng dẫn sửa cụ thể, hiển thị trong bảng trợ giúp. */
+  fix?: string;
+  section?: number;
+  visual?: number;
+};
+
+const MAX_CHARS_PER_SLIDE = 480;
+const MAX_BULLETS = 6;
+
+/* ------------------------------------------------------------------ */
+/* Kiểm định                                                           */
+/* ------------------------------------------------------------------ */
+
+export function auditLesson(lesson: Lesson): AuditItem[] {
+  const out: AuditItem[] = [];
+  if (!lesson?.title?.trim()) {
+    out.push({ level: "error", code: "TITLE", message: "Thiếu tên bài học.", fix: "Nhập tên bài ở ô trên cùng của trình biên tập." });
+  }
+  if (!lesson?.sections?.length) {
+    out.push({ level: "error", code: "SECTIONS", message: "Bài giảng chưa có slide nội dung nào." });
+    return out;
+  }
+
+  lesson.sections.forEach((s, si) => auditSection(s, si + 1, out));
+  auditPedagogy(lesson, out);
+
+  if (!out.some((x) => x.level === "error" || x.level === "warning")) {
+    out.push({ level: "ok", code: "PASS", message: "Không phát hiện lỗi cấu trúc hoặc lỗi dữ liệu hình Toán." });
+  }
+  return out;
+}
+
+function auditSection(s: Section, index: number, out: AuditItem[]) {
+  if (!s.heading?.trim()) {
+    out.push({ level: "error", code: "HEADING", message: "Slide thiếu tiêu đề.", section: index });
+  }
+  const plain = mixedLatexToUnicode(s.content || "");
+  if (plain.text.length < 20 && !(s.visuals?.length)) {
+    out.push({ level: "warning", code: "CONTENT_SHORT", message: "Slide gần như trống: không có chữ lẫn hình.", section: index });
+  }
+  if (plain.text.length > MAX_CHARS_PER_SLIDE) {
+    out.push({
+      level: "warning", code: "CONTENT_LONG", section: index,
+      message: `Slide dài ${plain.text.length} ký tự, vượt ngưỡng ${MAX_CHARS_PER_SLIDE} — chữ sẽ bị co nhỏ khi chiếu.`,
+      fix: "Tách thành 2 slide hoặc chuyển bớt phần diễn giải xuống ghi chú giáo viên.",
+    });
+  }
+  if (plain.unknownCommands.length) {
+    out.push({
+      level: "warning", code: "LATEX_UNKNOWN", section: index,
+      message: `Lệnh LaTeX chưa hỗ trợ khi xuất PowerPoint: ${plain.unknownCommands.join(", ")}.`,
+      fix: "Viết lại bằng ký hiệu thông dụng, hoặc chuyển công thức đó thành visual dạng formula để giữ nguyên nét chữ Toán.",
+    });
+  }
+  // đếm số dấu $ để phát hiện công thức chưa đóng
+  const dollars = (s.content || "").split("$").length - 1;
+  if (dollars % 2 !== 0) {
+    out.push({ level: "error", code: "MATH_UNCLOSED", section: index, message: "Có dấu $ chưa đóng cặp, công thức sẽ hiển thị sai." });
+  }
+  const bullets = (s.content || "").split(/\n|\s-\s/).filter((t) => t.trim()).length;
+  if (bullets > MAX_BULLETS) {
+    out.push({ level: "tip", code: "TOO_MANY_BULLETS", section: index, message: `Slide có ${bullets} ý; nên giữ tối đa ${MAX_BULLETS} ý để học sinh kịp theo dõi.` });
+  }
+  if ((s.visuals?.length ?? 0) > 2) {
+    out.push({
+      level: "tip", code: "VISUAL_CROWDED", section: index,
+      message: `Slide có ${s.visuals!.length} hình; bản xuất sẽ tự tách sang slide phụ để không bị nhỏ.`,
+    });
+  }
+  (s.visuals || []).forEach((v, vi) => auditVisual(v, index, vi, out));
+}
+
+function auditVisual(v: Visual, section: number, visual: number, out: AuditItem[]) {
+  const at = { section, visual };
+  switch (v.type) {
+    case "formula": {
+      if (!v.latex?.trim()) { out.push({ level: "error", code: "FORMULA_EMPTY", message: "Công thức trống.", ...at }); break; }
+      const braces = (v.latex.match(/\{/g) || []).length - (v.latex.match(/\}/g) || []).length;
+      if (braces !== 0) out.push({ level: "error", code: "FORMULA_BRACE", message: "Công thức lệch dấu ngoặc nhọn { }.", ...at });
+      const conv = latexToUnicode(v.latex);
+      if (conv.unknownCommands.length)
+        out.push({ level: "tip", code: "FORMULA_EXOTIC", message: `Lệnh ít gặp: ${conv.unknownCommands.join(", ")} — vẫn hiển thị đẹp trên web nhưng sẽ là chữ thường khi xuất PPTX.`, ...at });
+      break;
+    }
+    case "variation_table": auditVariation(v, section, visual, out); break;
+    case "sign_chart": {
+      const n = v.x?.length ?? 0;
+      if (n < 2) { out.push({ level: "error", code: "SIGN_X", message: "Bảng xét dấu cần ít nhất 2 mốc.", ...at }); break; }
+      const rows = v.rows?.length ? v.rows : [{ label: v.label ?? "", signs: v.signs ?? [] }];
+      rows.forEach((r) => {
+        if (r.signs.length !== 2 * n - 3 && r.signs.length !== n - 1)
+          out.push({
+            level: "error", code: "SIGN_LENGTH", ...at,
+            message: `Dòng "${r.label || "f(x)"}" có ${r.signs.length} ô, cần ${2 * n - 3} ô (dấu xen kẽ nghiệm) hoặc ${n - 1} ô (chỉ dấu trên khoảng).`,
+          });
+      });
+      break;
+    }
+    case "graph": auditGraph(v, section, visual, out); break;
+    case "stat_chart": auditStat(v, section, visual, out); break;
+    case "box_plot": auditBox(v, section, visual, out); break;
+    case "prob_tree": auditTree(v, section, visual, out); break;
+    case "inequality_region": auditRegion(v, section, visual, out); break;
+    case "quiz": {
+      if (!v.options?.length || v.options.length < 2)
+        out.push({ level: "error", code: "QUIZ_OPTIONS", message: "Câu hỏi trắc nghiệm cần ít nhất 2 phương án.", ...at });
+      else if (v.answerIndex < 0 || v.answerIndex >= v.options.length)
+        out.push({ level: "error", code: "QUIZ_ANSWER", message: "Chỉ số đáp án đúng nằm ngoài danh sách phương án.", ...at });
+      break;
+    }
+    case "data_table": {
+      const bad = v.rows.findIndex((r) => r.length !== v.headers.length);
+      if (bad >= 0) out.push({ level: "error", code: "TABLE_SHAPE", message: `Dòng ${bad + 1} có số ô khác số cột tiêu đề.`, ...at });
+      break;
+    }
+    default: break;
+  }
+}
+
+function auditVariation(v: VariationVisual, section: number, visual: number, out: AuditItem[]) {
+  const at = { section, visual };
+  const n = v.x?.length ?? 0;
+  if (n < 2) { out.push({ level: "error", code: "BBT_X", message: "Bảng biến thiên cần ít nhất 2 mốc x.", ...at }); return; }
+  if ((v.values?.length ?? 0) !== n)
+    out.push({ level: "error", code: "BBT_VALUE_LENGTH", ...at, message: `Hàng y có ${v.values?.length ?? 0} giá trị nhưng có ${n} mốc x.`, fix: "Mỗi mốc x phải có đúng một giá trị hoặc giới hạn của y." });
+
+  const expected = 2 * n - 3;
+  if ((v.derivative?.length ?? 0) !== expected)
+    out.push({ level: "error", code: "BBT_DERIVATIVE_LENGTH", ...at, message: `Hàng y′ cần ${expected} ô (xen kẽ dấu và nghiệm) nhưng đang có ${v.derivative?.length ?? 0}.` });
+
+  if ((v.derivative ?? []).some((d) => d === "?" || d === ""))
+    out.push({ level: "error", code: "BBT_UNKNOWN_SIGN", ...at, message: "Còn ô dấu y′ chưa xác định (?). Không được xuất khi chưa điền đủ." });
+
+  // dấu phải đổi chiều quanh nghiệm bội lẻ: hai khoảng liên tiếp cùng dấu mà ở giữa là "0" -> nghi ngờ
+  const der = v.derivative ?? [];
+  for (let i = 0; i + 2 < der.length; i += 2) {
+    if (der[i] && der[i] === der[i + 2] && der[i + 1] === "0") {
+      out.push({
+        level: "warning", code: "BBT_NO_EXTREMUM", ...at,
+        message: `Tại mốc ${v.x[i / 2 + 1]}: y′ đổi từ "${der[i]}" sang "${der[i + 2]}" (không đổi dấu) nên đây KHÔNG phải cực trị.`,
+        fix: "Kiểm tra lại: nếu là nghiệm bội chẵn thì bỏ ghi cực trị; nếu nhầm dấu thì sửa hàng y′.",
+      });
+    }
+  }
+
+  v.discontinuities?.forEach((d) => {
+    if (d.index <= 0 || d.index >= n - 1)
+      out.push({ level: "warning", code: "BBT_BREAK", message: "Điểm gián đoạn phải nằm giữa hai đầu mút của bảng.", ...at });
+  });
+
+  // KIỂM ĐỊNH CHÉO bằng đạo hàm số học — điểm mới của V11
+  if (v.expression) {
+    const c = compileExpression(v.expression);
+    if (!c.ok) {
+      out.push({ level: "warning", code: "BBT_EXPR", message: `Không đọc được biểu thức kiểm chứng: ${c.error}`, ...at });
+      return;
+    }
+    const nodes = v.x.map(parseBound);
+    for (let i = 0; i < n - 1; i++) {
+      const a = nodes[i], b = nodes[i + 1];
+      if (!Number.isFinite(a) && !Number.isFinite(b)) continue;
+      const lo = Number.isFinite(a) ? a : b - 4;
+      const hi = Number.isFinite(b) ? b : a + 4;
+      if (!(hi > lo)) continue;
+      const samples = [0.25, 0.5, 0.75].map((t) => lo + (hi - lo) * t);
+      const ds = samples.map((x) => numericDerivative(v.expression!, x)).filter(Number.isFinite);
+      if (!ds.length) continue;
+      const positive = ds.every((d) => d > 1e-6);
+      const negative = ds.every((d) => d < -1e-6);
+      const declared = (der[i * 2] ?? "").trim();
+      if (positive && declared === "-")
+        out.push({ level: "error", code: "BBT_SIGN_MISMATCH", ...at, message: `Trên khoảng (${v.x[i]}; ${v.x[i + 1]}) đạo hàm tính được MANG DẤU DƯƠNG nhưng bảng ghi "−".` });
+      if (negative && declared === "+")
+        out.push({ level: "error", code: "BBT_SIGN_MISMATCH", ...at, message: `Trên khoảng (${v.x[i]}; ${v.x[i + 1]}) đạo hàm tính được MANG DẤU ÂM nhưng bảng ghi "+".` });
+    }
+    // đối chiếu giá trị tại các mốc hữu hạn
+    v.x.forEach((raw, i) => {
+      const x = parseBound(raw);
+      const declared = Number(String(v.values?.[i] ?? "").replace(/[^0-9.\-]/g, ""));
+      if (!Number.isFinite(x) || !Number.isFinite(declared)) return;
+      const actual = evalAt(v.expression!, x);
+      if (Number.isFinite(actual) && Math.abs(actual - declared) > Math.max(0.02, Math.abs(actual) * 0.01))
+        out.push({ level: "warning", code: "BBT_VALUE_MISMATCH", ...at, message: `Tại x = ${raw}: bảng ghi y = ${v.values?.[i]} nhưng hàm số cho y ≈ ${actual.toFixed(3)}.` });
+    });
+  }
+}
+
+function parseBound(raw: string): number {
+  const t = String(raw ?? "").replace(/\\infty|∞/g, "Inf").replace(/\s/g, "");
+  if (/^[+]?Inf$/.test(t)) return Number.POSITIVE_INFINITY;
+  if (/^-Inf$/.test(t)) return Number.NEGATIVE_INFINITY;
+  const c = compileExpression(t);
+  return c.ok ? c.eval(0) : NaN;
+}
+
+function auditGraph(v: GraphVisual, section: number, visual: number, out: AuditItem[]) {
+  const at = { section, visual };
+  if (!(v.xMin < v.xMax) || !(v.yMin < v.yMax)) {
+    out.push({ level: "error", code: "GRAPH_RANGE", message: "Miền vẽ không hợp lệ (xMin ≥ xMax hoặc yMin ≥ yMax).", ...at });
+    return;
+  }
+  const list = v.expressions?.length ? v.expressions.map((e) => e.expression) : [v.expression];
+  let visible = 0, total = 0;
+  list.forEach((expr) => {
+    const c = compileExpression(expr);
+    if (!c.ok) {
+      out.push({ level: "error", code: "GRAPH_EXPR", message: `Biểu thức "${expr}" không hợp lệ: ${c.error}`, ...at });
+      return;
+    }
+    for (let i = 0; i <= 200; i++) {
+      const x = v.xMin + ((v.xMax - v.xMin) * i) / 200;
+      const y = c.eval(x);
+      if (!Number.isFinite(y)) continue;
+      total++;
+      if (y >= v.yMin && y <= v.yMax) visible++;
+    }
+  });
+  if (total > 0 && visible / total < 0.15)
+    out.push({
+      level: "warning", code: "GRAPH_OUT_OF_VIEW", ...at,
+      message: `Chỉ ${Math.round((visible / total) * 100)}% đồ thị nằm trong khung nhìn — học sinh sẽ thấy hình gần như trống.`,
+      fix: "Nới rộng yMin/yMax cho khớp với giá trị thực của hàm số.",
+    });
+
+  // tiệm cận đứng có thật nhưng chưa khai báo
+  const poles = detectPoles(v.expression, v.xMin, v.xMax);
+  const declared = new Set((v.asymptotes ?? []).filter((a) => a.kind === "vertical").map((a) => Math.round((a.value ?? 0) * 100)));
+  poles.forEach((p) => {
+    if (!declared.has(Math.round(p * 100)))
+      out.push({ level: "tip", code: "GRAPH_ASYMPTOTE", ...at, message: `Hàm số có tiệm cận đứng gần x ≈ ${p.toFixed(2)} nhưng chưa vẽ đường tiệm cận.` });
+  });
+
+  v.points?.forEach((q) => {
+    const y = evalAt(v.expression, q.x);
+    if (Number.isFinite(y) && Math.abs(y - q.y) > Math.max(0.05, Math.abs(y) * 0.02))
+      out.push({ level: "warning", code: "GRAPH_POINT", ...at, message: `Điểm ${q.label || `(${q.x}; ${q.y})`} không nằm trên đồ thị (giá trị đúng ≈ ${y.toFixed(3)}).` });
+  });
+}
+
+function auditStat(v: StatChartVisual, section: number, visual: number, out: AuditItem[]) {
+  const at = { section, visual };
+  if (!v.series?.length) { out.push({ level: "error", code: "STAT_EMPTY", message: "Biểu đồ chưa có dãy số liệu.", ...at }); return; }
+  v.series.forEach((s, i) => {
+    const need = v.chart === "histogram" ? (v.bins?.length ?? 1) - 1 : v.labels.length;
+    if (s.values.length !== need)
+      out.push({ level: "error", code: "STAT_LENGTH", ...at, message: `Dãy ${i + 1} có ${s.values.length} số nhưng cần ${need} theo nhãn/mốc lớp.` });
+    if (s.values.some((x) => !Number.isFinite(x)))
+      out.push({ level: "error", code: "STAT_NAN", ...at, message: `Dãy ${i + 1} chứa giá trị không phải số.` });
+  });
+  if (v.chart === "pie") {
+    const sum = v.series[0].values.reduce((a, b) => a + b, 0);
+    if (Math.abs(sum - 100) > 0.5 && Math.abs(sum - 1) > 0.01)
+      out.push({ level: "tip", code: "PIE_SUM", ...at, message: `Tổng các phần là ${sum}; biểu đồ hình quạt sẽ tự quy về 100%.` });
+  }
+}
+
+function auditBox(v: BoxPlotVisual, section: number, visual: number, out: AuditItem[]) {
+  v.groups.forEach((g, i) => {
+    if (!(g.min <= g.q1 && g.q1 <= g.median && g.median <= g.q3 && g.q3 <= g.max))
+      out.push({
+        level: "error", code: "BOX_ORDER", section, visual,
+        message: `Nhóm "${g.name || i + 1}": phải có min ≤ Q₁ ≤ Q₂ ≤ Q₃ ≤ max (đang là ${g.min}, ${g.q1}, ${g.median}, ${g.q3}, ${g.max}).`,
+      });
+  });
+}
+
+function auditTree(v: ProbTreeVisual, section: number, visual: number, out: AuditItem[]) {
+  const num = (s: string) => {
+    const t = String(s).replace(/\s/g, "");
+    const m = t.match(/^(-?\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);
+    if (m) return Number(m[1]) / Number(m[2]);
+    const p = Number(t.replace("%", ""));
+    return t.includes("%") ? p / 100 : p;
+  };
+  const sum = v.branches.reduce((a, b) => a + (num(b.p) || 0), 0);
+  if (Math.abs(sum - 1) > 0.02)
+    out.push({ level: "warning", code: "TREE_SUM", section, visual, message: `Tổng xác suất nhánh cấp 1 bằng ${sum.toFixed(3)}, lẽ ra bằng 1.` });
+  v.branches.forEach((b) => {
+    if (!b.children?.length) return;
+    const s = b.children.reduce((a, c) => a + (num(c.p) || 0), 0);
+    if (Math.abs(s - 1) > 0.02)
+      out.push({ level: "warning", code: "TREE_SUM_CHILD", section, visual, message: `Nhánh "${b.label}": tổng xác suất con bằng ${s.toFixed(3)}, lẽ ra bằng 1.` });
+  });
+}
+
+function auditRegion(v: RegionVisual, section: number, visual: number, out: AuditItem[]) {
+  if (!v.constraints?.length)
+    out.push({ level: "error", code: "REGION_EMPTY", message: "Chưa có bất phương trình nào để xác định miền nghiệm.", section, visual });
+  v.vertices?.forEach((q) => {
+    const bad = v.constraints.find((c) => {
+      const s = c.a * q.x + c.b * q.y;
+      const eps = 1e-6;
+      return c.op === "<=" || c.op === "<" ? s > c.c + eps : s < c.c - eps;
+    });
+    if (bad)
+      out.push({ level: "warning", code: "REGION_VERTEX", section, visual, message: `Đỉnh ${q.label || `(${q.x}; ${q.y})`} không thoả mãn ràng buộc ${bad.label || `${bad.a}x + ${bad.b}y ${bad.op} ${bad.c}`}.` });
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Kiểm định sư phạm (CT GDPT 2018)                                    */
+/* ------------------------------------------------------------------ */
+
+function auditPedagogy(lesson: Lesson, out: AuditItem[]) {
+  const phases = new Set(lesson.sections.map((s) => s.phase).filter(Boolean));
+  const required: [string, string][] = [
+    ["khoi_dong", "Khởi động"],
+    ["luyen_tap", "Luyện tập"],
+    ["van_dung", "Vận dụng"],
+  ];
+  required.forEach(([key, name]) => {
+    if (!phases.has(key as never))
+      out.push({ level: "tip", code: `PHASE_${key.toUpperCase()}`, message: `Bài giảng chưa có hoạt động "${name}" — theo CT GDPT 2018 nên có đủ chuỗi Khởi động → Hình thành kiến thức → Luyện tập → Vận dụng.` });
+  });
+
+  const visualCount = lesson.sections.reduce((n, s) => n + (s.visuals?.length ?? 0), 0);
+  if (visualCount / Math.max(1, lesson.sections.length) < 0.35)
+    out.push({ level: "tip", code: "LOW_VISUAL", message: `Chỉ ${visualCount} hình trên ${lesson.sections.length} slide. Bài Toán chiếu chữ nhiều sẽ khó giữ chú ý; hãy thêm đồ thị, bảng biến thiên hoặc biểu đồ.` });
+
+  const quizzes = lesson.sections.filter((s) => s.visuals?.some((v) => v.type === "quiz")).length;
+  if (quizzes === 0)
+    out.push({ level: "tip", code: "NO_INTERACTION", message: "Chưa có slide tương tác (câu hỏi bấm chọn). Thêm 2–3 câu ở phần Luyện tập để kiểm tra nhanh cả lớp." });
+
+  const withNotes = lesson.sections.filter((s) => s.notes?.trim()).length;
+  if (withNotes < lesson.sections.length * 0.5)
+    out.push({ level: "tip", code: "FEW_NOTES", message: `Chỉ ${withNotes}/${lesson.sections.length} slide có ghi chú cho giáo viên. Ghi chú sẽ được đưa vào phần Notes của PowerPoint.` });
+
+  const totalMinutes = lesson.sections.reduce((n, s) => n + (s.minutes ?? 0), 0);
+  if (totalMinutes > 0 && (totalMinutes < 30 || totalMinutes > 100))
+    out.push({ level: "tip", code: "TIMING", message: `Tổng thời lượng dự kiến ${totalMinutes} phút — hãy đối chiếu với số tiết đã chọn (1 tiết = 45 phút).` });
+}
+
+/* ------------------------------------------------------------------ */
+/* Sửa chữa (chỉ sửa cái CHẮC CHẮN đúng)                               */
+/* ------------------------------------------------------------------ */
+
+function clean(s: string) {
+  return String(s ?? "").normalize("NFC").replace(/`\s+/g, " ").replace(/\s{2,}/g, " ").trim();
+}
+
+export type RepairReport = { lesson: Lesson; changes: string[]; unresolved: string[] };
+
+export function repairLesson(input: Lesson): RepairReport {
+  const lesson = structuredClone(input);
+  const changes: string[] = [];
+  const unresolved: string[] = [];
+
+  lesson.title = clean(lesson.title);
+  lesson.sections = (lesson.sections || []).map((s, si) => {
+    const heading = clean(s.heading) || `Nội dung ${si + 1}`;
+    if (heading !== s.heading) changes.push(`Slide ${si + 1}: chuẩn hoá tiêu đề.`);
+    const content = clean(s.content);
+
+    const visuals = (s.visuals || []).map((v, vi) => {
+      const where = `Slide ${si + 1} · hình ${vi + 1}`;
+      if (v.type === "variation_table") {
+        const n = Math.max(2, v.x?.length || 0);
+        v.x = Array.from({ length: n }, (_, i) => v.x?.[i] ?? (i === 0 ? "-\\infty" : i === n - 1 ? "+\\infty" : "?"));
+        // KHÔNG bịa giá trị: thiếu thì để "?" và báo ra ngoài
+        if ((v.values?.length ?? 0) !== n) {
+          v.values = Array.from({ length: n }, (_, i) => v.values?.[i] ?? "?");
+          unresolved.push(`${where}: thiếu giá trị y ở một số mốc — cần nhập tay hoặc tạo lại bằng AI.`);
+        }
+        const expected = 2 * n - 3;
+        if ((v.derivative?.length ?? 0) !== expected) {
+          // nếu có biểu thức, TÍNH LẠI thay vì bịa
+          const derived = v.expression ? deriveSigns(v.expression, v.x) : null;
+          if (derived) {
+            v.derivative = derived;
+            changes.push(`${where}: tính lại hàng y′ từ biểu thức ${v.expression}.`);
+          } else {
+            v.derivative = Array.from({ length: expected }, (_, i) => v.derivative?.[i] ?? (i % 2 ? "0" : "?"));
+            unresolved.push(`${where}: thiếu dấu đạo hàm. Phần mềm KHÔNG tự điền để tránh sai kiến thức — hãy bổ sung dấu hoặc điền trường "expression".`);
+          }
+        }
+        v.discontinuities = (v.discontinuities || []).filter((d) => d.index > 0 && d.index < n - 1);
+      }
+      if (v.type === "sign_chart") {
+        const n = Math.max(2, v.x?.length || 0);
+        const expected = 2 * n - 3;
+        if ((v.signs?.length ?? 0) !== expected && (v.signs?.length ?? 0) !== n - 1) {
+          unresolved.push(`${where}: bảng xét dấu thiếu ô, cần ${expected} ô.`);
+        }
+      }
+      if (v.type === "graph") {
+        if (!(v.xMin < v.xMax)) { v.xMin = -5; v.xMax = 5; changes.push(`${where}: đặt lại miền x về [-5; 5].`); }
+        if (!(v.yMin < v.yMax)) { v.yMin = -5; v.yMax = 5; changes.push(`${where}: đặt lại miền y về [-5; 5].`); }
+        // tự nới khung nhìn cho khớp hàm số — an toàn vì không đổi bản chất toán học
+        const fit = fitRange(v.expression, v.xMin, v.xMax);
+        if (fit && (fit.yMin < v.yMin || fit.yMax > v.yMax)) {
+          v.yMin = fit.yMin; v.yMax = fit.yMax;
+          changes.push(`${where}: nới khung nhìn y về [${fit.yMin}; ${fit.yMax}] để thấy trọn đồ thị.`);
+        }
+      }
+      return v;
+    });
+
+    return { ...s, heading, content, visuals };
+  });
+
+  return { lesson, changes, unresolved };
+}
+
+/** Suy ra hàng dấu y′ từ biểu thức bằng đạo hàm số học (chỉ dùng khi có expression). */
+function deriveSigns(expression: string, xs: string[]): string[] | null {
+  const c = compileExpression(expression);
+  if (!c.ok) return null;
+  const nodes = xs.map(parseBound);
+  const n = xs.length;
+  const out: string[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const a = nodes[i], b = nodes[i + 1];
+    const lo = Number.isFinite(a) ? a : (Number.isFinite(b) ? b - 4 : -4);
+    const hi = Number.isFinite(b) ? b : (Number.isFinite(a) ? a + 4 : 4);
+    if (!(hi > lo)) return null;
+    const ds = [0.2, 0.5, 0.8].map((t) => numericDerivative(expression, lo + (hi - lo) * t)).filter(Number.isFinite);
+    if (!ds.length) return null;
+    if (ds.every((d) => d > 0)) out.push("+");
+    else if (ds.every((d) => d < 0)) out.push("-");
+    else return null;
+    if (i < n - 2) out.push("0");
+  }
+  return out;
+}
+
+/** Gợi ý khung nhìn y hợp lý cho đồ thị. */
+function fitRange(expression: string, xMin: number, xMax: number): { yMin: number; yMax: number } | null {
+  const c = compileExpression(expression);
+  if (!c.ok) return null;
+  const ys: number[] = [];
+  for (let i = 0; i <= 400; i++) {
+    const y = c.eval(xMin + ((xMax - xMin) * i) / 400);
+    if (Number.isFinite(y) && Math.abs(y) < 1e6) ys.push(y);
+  }
+  if (ys.length < 20) return null;
+  ys.sort((a, b) => a - b);
+  // bỏ 3% đuôi để không bị tiệm cận kéo giãn
+  const lo = ys[Math.floor(ys.length * 0.03)];
+  const hi = ys[Math.floor(ys.length * 0.97)];
+  const pad = Math.max(1, (hi - lo) * 0.18);
+  return { yMin: Math.floor(lo - pad), yMax: Math.ceil(hi + pad) };
+}
