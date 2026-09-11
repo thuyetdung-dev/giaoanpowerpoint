@@ -7,6 +7,7 @@ import "./features.css";
 import "./reference.css";
 import "./v9-layout.css";
 import "./v11.css";
+import "./slide.css";
 
 export const metadata: Metadata = {
   title: "Trợ lý soạn PowerPoint Toán THPT — LessonStudio V11",

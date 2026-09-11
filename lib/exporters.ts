@@ -20,6 +20,7 @@
 import type { Lesson, Section, Visual } from "./types";
 import { getTheme, PHASE_META, VISUAL_LABEL, type Theme } from "./themes";
 import { latexToUnicode, mixedLatexToUnicode } from "./latex";
+import { LAYOUT, visualBoxes } from "./slides";
 
 const PPTX_VERSION = "4.0.1";
 
@@ -326,18 +327,19 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
             { x: 0.88, y: 2.16, w: 3.65, h: 4.2, fontFace: t.bodyFont, fontSize: Math.min(18, bodyFontSize(chars, true)), color: t.ink, valign: "top", margin: 0.06 },
           );
         } else {
+          // Dùng chung toạ độ với khung xem trước (lib/slides.ts) để file xuất ra
+          // khớp từng milimét với những gì giáo viên nhìn thấy trên màn hình.
           slide.addText("Tiếp theo phần trước", {
-            x: 0.88, y: 1.8, w: 3.6, h: 0.4, fontFace: t.bodyFont, fontSize: 13, italic: true, color: t.muted, margin: 0,
+            x: LAYOUT.contPanel.x, y: LAYOUT.contPanel.y, w: LAYOUT.contPanel.w, h: LAYOUT.contPanel.h,
+            fontFace: t.bodyFont, fontSize: LAYOUT.contPanel.pt, italic: true, color: t.muted, margin: 0,
           });
         }
 
-        const boxX = ci === 0 ? 5.08 : 0.62;
-        const boxW = ci === 0 ? 7.62 : 12.1;
+        const boxes = visualBoxes(ci, group.length);
         for (let k = 0; k < group.length; k++) {
           const vi = group[k];
           const node = nodes[vi];
-          const boxH = group.length === 1 ? 5.15 : 2.42;
-          const boxY = 1.48 + k * (boxH + 0.3);
+          const { x: boxX, y: boxY, w: boxW, h: boxH } = boxes[k];
           slide.addText(VISUAL_LABEL[visuals[vi].type] || "HÌNH MINH HOẠ", {
             x: boxX + 0.12, y: boxY + 0.04, w: 4, h: 0.24,
             fontFace: t.bodyFont, fontSize: 9.5, bold: true, color: t.primary, charSpacing: 0.8, margin: 0,

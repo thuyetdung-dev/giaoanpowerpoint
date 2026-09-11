@@ -20,7 +20,9 @@ import type { Lesson, Section, Visual } from "@/lib/types";
 import { auditLesson, repairLesson, type AuditItem } from "@/lib/audit";
 import { readSource, type SourceDoc } from "@/lib/importer";
 import { exportHtml, exportJson, exportPptx, exportPreviewImage, exportWorksheet } from "@/lib/exporters";
-import { THEMES, PHASE_META } from "@/lib/themes";
+import { THEMES, PHASE_META, getTheme } from "@/lib/themes";
+import { SlideFrame, Presenter } from "@/components/SlideView";
+import { buildDeck, findSlideForSection } from "@/lib/slides";
 
 const STORAGE_KEY = "lessonstudio.v11.draft";
 
@@ -53,6 +55,7 @@ export default function Page() {
   const [selected, setSelected] = useState(0);
   const [editing, setEditing] = useState(false);
   const [visualDraft, setVisualDraft] = useState<{ index: number; text: string } | null>(null);
+  const [presenting, setPresenting] = useState<number | null>(null);
 
   const previewRef = useRef<HTMLElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -99,6 +102,11 @@ export default function Page() {
   const warnings = useMemo(() => audit.filter((a) => a.level === "warning"), [audit]);
   const tips = useMemo(() => audit.filter((a) => a.level === "tip"), [audit]);
   const current = lesson?.sections[selected];
+  const deckMeta = useMemo(() => ({ teacher: form.teacher, school: form.school }), [form.teacher, form.school]);
+  const deck = useMemo(() => (lesson ? buildDeck(lesson, deckMeta) : []), [lesson, deckMeta]);
+  /** Slide đang xem trong trình biên tập, tính theo đúng thứ tự của bản xuất. */
+  const deckIndex = useMemo(() => findSlideForSection(deck, selected), [deck, selected]);
+  const theme = useMemo(() => getTheme(lesson?.theme), [lesson?.theme]);
   const currentIssues = audit.filter((a) => a.level !== "ok" && (!a.section || a.section === selected + 1));
 
   /* ---------- Kết nối Gemini ---------- */
@@ -432,6 +440,7 @@ export default function Page() {
                 </h2>
               </div>
               <div className="export-actions">
+                <button className="present" onClick={() => setPresenting(deckIndex)}>⛶ Trình chiếu</button>
                 <button className="trial" onClick={() => exportDeck(10)} disabled={busy}>Xem thử 10 slide</button>
                 <button onClick={() => exportDeck()} disabled={busy}>⬇ Xuất PowerPoint</button>
                 <button onClick={() => exportHtml(previewRef.current!, lesson)}>Trình chiếu HTML</button>
@@ -474,21 +483,39 @@ export default function Page() {
               <section className="slide-canvas">
                 {current ? (
                   <>
-                    <div className="canvas-toolbar">
-                      <span>Slide {selected + 1}/{lesson.sections.length}</span>
-                      <div className="canvas-tools">
-                        <button onClick={() => moveSection(-1)} title="Lên">↑</button>
-                        <button onClick={() => moveSection(1)} title="Xuống">↓</button>
-                        <button onClick={duplicateSection} title="Nhân bản">⧉</button>
-                        <button onClick={removeSection} title="Xoá">🗑</button>
-                        <button onClick={() => setEditing((x) => !x)}>{editing ? "✓ Xong" : "✎ Sửa slide"}</button>
-                      </div>
+                    {/* Thanh công cụ: nút ghi rõ chữ, không dùng biểu tượng khó đoán */}
+                    <div className="canvas-head">
+                      <span className="pos">Slide {deckIndex + 1}/{deck.length} · mục {selected + 1}/{lesson.sections.length}</span>
+                      <button onClick={() => moveSection(-1)} disabled={selected === 0}>↑ LÊN</button>
+                      <button onClick={() => moveSection(1)} disabled={selected === lesson.sections.length - 1}>↓ XUỐNG</button>
+                      <button onClick={duplicateSection}>⧉ NHÂN BẢN</button>
+                      <button className="danger" onClick={removeSection}>🗑 XOÁ SLIDE</button>
+                      <button className={editing ? "done" : "edit"} onClick={() => setEditing((x) => !x)}>
+                        {editing ? "✓ XONG" : "✎ SỬA SLIDE"}
+                      </button>
+                      <button className="primary" onClick={() => setPresenting(deckIndex)}>⛶ TOÀN MÀN HÌNH</button>
                     </div>
 
-                    <article>
-                      {editing ? (
+                    {/* Khung xem trước: đúng khổ 16:9 và đúng bố cục của file PowerPoint xuất ra */}
+                    <SlideFrame
+                      spec={deck[deckIndex]}
+                      lesson={lesson}
+                      number={deckIndex + 1}
+                      meta={deckMeta}
+                      theme={theme}
+                    />
+                    <p className="slide-hint">
+                      Đây là hình ảnh thật của slide khi trình chiếu — chữ tràn hay hình bị nhỏ đều thấy được ngay tại đây.
+                      Bấm <b>TOÀN MÀN HÌNH</b> để chiếu thử cả bài (mũi tên ←/→ chuyển slide, phím S xem ghi chú, Esc thoát).
+                    </p>
+
+                    {editing && (
+                      <div className="edit-panel">
+                        <b>Sửa nội dung slide {selected + 1}</b>
                         <div className="edit-form">
-                          <label>Tiêu đề slide<input value={current.heading} onChange={(e) => updateSection({ heading: e.target.value })} /></label>
+                          <label>Tiêu đề slide
+                            <input value={current.heading} onChange={(e) => updateSection({ heading: e.target.value })} />
+                          </label>
                           <label>Nội dung (mỗi ý một dòng, công thức đặt trong $...$)
                             <textarea rows={6} value={current.content} onChange={(e) => updateSection({ content: e.target.value })} />
                           </label>
@@ -504,55 +531,44 @@ export default function Page() {
                                 <option value="">—</option><option>NB</option><option>TH</option><option>VD</option><option>VDC</option>
                               </select>
                             </label>
-                            <label>Phút<input type="number" min="0" max="45" value={current.minutes ?? ""} onChange={(e) => updateSection({ minutes: Number(e.target.value) || undefined })} /></label>
+                            <label>Phút
+                              <input type="number" min="0" max="45" value={current.minutes ?? ""} onChange={(e) => updateSection({ minutes: Number(e.target.value) || undefined })} />
+                            </label>
                           </div>
                           <label>Ghi chú cho giáo viên (xuất vào Notes của PowerPoint)
                             <textarea rows={4} value={current.notes ?? ""} onChange={(e) => updateSection({ notes: e.target.value })} />
                           </label>
                         </div>
-                      ) : (
-                        <>
-                          <h3>
-                            <em>{String(selected + 1).padStart(2, "0")}</em>
-                            <MixedMath value={current.heading} />
-                          </h3>
-                          <p><MixedMath value={current.content} /></p>
-                          {current.questions?.length ? (
-                            <ul className="questions">
-                              {current.questions.map((q, i) => <li key={i}><MixedMath value={q} /></li>)}
-                            </ul>
-                          ) : null}
-                        </>
-                      )}
 
-                      <div className="visual-grid">
-                        {current.visuals?.map((v, j) => (
-                          <div className={`visual-card ${v.type}`} key={j}>
-                            <span className="visual-label">
-                              {VISUAL_LABEL[v.type] || v.type}
-                              <button className="mini" onClick={() => setVisualDraft({ index: j, text: JSON.stringify(v, null, 2) })}>Sửa dữ liệu</button>
-                              <button className="mini danger" onClick={() => removeVisual(j)}>Xoá</button>
-                            </span>
-                            <MathVisual visual={v} />
+                        {current.visuals?.length ? (
+                          <div className="visual-strip">
+                            <b>Hình trên slide này</b>
+                            {current.visuals.map((v, j) => (
+                              <div className="visual-row" key={j}>
+                                <span>{j + 1}. {VISUAL_LABEL[v.type] || v.type}</span>
+                                <button onClick={() => setVisualDraft({ index: j, text: JSON.stringify(v, null, 2) })}>✎ SỬA DỮ LIỆU</button>
+                                <button className="danger" onClick={() => removeVisual(j)}>🗑 XOÁ HÌNH</button>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        ) : null}
+
+                        {visualDraft && (
+                          <div className="visual-editor">
+                            <b>Sửa dữ liệu hình #{visualDraft.index + 1}</b>
+                            <textarea rows={12} value={visualDraft.text} onChange={(e) => setVisualDraft({ ...visualDraft, text: e.target.value })} spellCheck={false} />
+                            <div>
+                              <button onClick={saveVisualDraft}>Áp dụng</button>
+                              <button onClick={() => setVisualDraft(null)}>Huỷ</button>
+                            </div>
+                          </div>
+                        )}
                       </div>
+                    )}
 
-                      {visualDraft && (
-                        <div className="visual-editor">
-                          <b>Sửa dữ liệu hình #{visualDraft.index + 1}</b>
-                          <textarea rows={12} value={visualDraft.text} onChange={(e) => setVisualDraft({ ...visualDraft, text: e.target.value })} spellCheck={false} />
-                          <div>
-                            <button onClick={saveVisualDraft}>Áp dụng</button>
-                            <button onClick={() => setVisualDraft(null)}>Huỷ</button>
-                          </div>
-                        </div>
-                      )}
-
-                      {current.notes && !editing && (
-                        <div className="notes-preview"><b>Ghi chú giáo viên</b><p>{current.notes}</p></div>
-                      )}
-                    </article>
+                    {current.notes && !editing && (
+                      <div className="notes-preview"><b>Ghi chú giáo viên</b><p>{current.notes}</p></div>
+                    )}
                   </>
                 ) : (
                   <div className="no-current">Chưa có nội dung để xem</div>
@@ -602,6 +618,16 @@ export default function Page() {
           </div>
         )}
       </section>
+
+      {presenting !== null && lesson && (
+        <Presenter
+          deck={deck}
+          lesson={lesson}
+          meta={deckMeta}
+          startAt={presenting}
+          onClose={() => setPresenting(null)}
+        />
+      )}
 
       <div className="v9-status" role="status">{message}</div>
     </main>

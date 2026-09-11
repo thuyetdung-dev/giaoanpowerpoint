@@ -66,3 +66,28 @@ node tests.mjs
 3. Trình sửa hình trực quan (kéo thả mốc bảng biến thiên) thay cho ô JSON.
 4. Nhúng GeoGebra/Desmos cho các hình cần tương tác động.
 5. Thư viện bài giảng dùng chung cho tổ chuyên môn (cần cơ sở dữ liệu).
+
+---
+
+## Phụ lục — bản V11.1
+
+**Khung xem trước là slide thật.** `lib/slides.ts` giữ toàn bộ toạ độ bố cục tính
+bằng inch (hệ của PowerPoint); `components/SlideView.tsx` vẽ lại trên web ở tỉ lệ
+96 px/inch, còn `lib/exporters.ts` dùng thẳng số inch đó. Nhờ chung một nguồn toạ
+độ, những gì hiện trên màn hình khớp với file xuất ra.
+
+**Trình chiếu toàn màn hình.** Nút ⛶ ở thanh trên và cạnh khung slide. Phím ←/→
+hoặc phím cách để chuyển slide, **S** bật/tắt ghi chú giáo viên, **Esc** thoát.
+
+**Nút ghi rõ chữ.** ↑ LÊN · ↓ XUỐNG · ⧉ NHÂN BẢN · 🗑 XOÁ SLIDE · ✎ SỬA SLIDE,
+thay cho các biểu tượng khó đoán. Khi sửa, khung slide vẫn hiển thị phía trên.
+
+**Sửa lỗi hiển thị tiếng Việt.** Phông `Georgia` không có glyph tiếng Việt dựng
+sẵn (ồ, ắ, ầ, ố...), nên trình duyệt phải ghép chữ nền với dấu rời và chữ hiện ra
+thành "nguô`n", "bă´t buộc", "hàm sô´". Đã thay toàn bộ Georgia bằng bộ phông có
+đủ tiếng Việt: `"Times New Roman", Cambria, "Liberation Serif", "Noto Serif",
+"DejaVu Serif", serif`.
+
+**Lưu ý khi chọn phông về sau:** trước khi dùng một phông mới cho giao diện hoặc
+cho slide, hãy thử với chuỗi kiểm tra `ồ ắ ầ ố ề ử ữ ợ ẫ ẳ Ồ Ắ Ầ Ố Ề Ử Ữ Ợ`.
+Nếu dấu bị lệch hay tách rời thì phông đó thiếu glyph tiếng Việt, đừng dùng.
