@@ -138,7 +138,52 @@
 
 /* --- In phiếu --- */
 @media print {
-  .v9-sidebar, .repair-panel, .preview-toolbar, .quality-summary, .canvas-toolbar { display: none !important; }
+  .v9-sidebar, .repair-panel, .preview-toolbar, .quality-summary, .canvas-toolbar, .library-panel { display: none !important; }
   .v9-main { margin: 0; padding: 0; }
   .editor-grid { display: block; }
 }
+
+/* --- Lối ra khỏi trình biên tập + Thư viện bài giảng (V11.4 / V11.5) ---
+   Trước đây màn hình khởi đầu chỉ hiện khi chưa có bài giảng, nên soạn xong
+   bài đầu tiên là không còn đường quay lại. V11.5 thay bản nháp đơn lẻ bằng
+   thư viện nhiều bài, mở lại được bất kỳ lúc nào. */
+.export-actions button.newlesson { background: #2e7d32; }
+.export-actions button.newlesson:hover { background: #1b5e20; }
+.export-actions button.library-btn { background: #4a5b6b; }
+.export-actions button.library-btn:hover { background: #37474f; }
+.export-actions button.library-btn.on { background: #102f49; box-shadow: inset 0 0 0 2px #f2a541; }
+
+.library-panel { margin: 14px 0 0; padding: 14px 16px; border: 1px solid #d5e0e8;
+                 border-radius: 10px; background: #f8fbfd; }
+.library-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.library-head b { font-size: 14px; }
+.library-head .ghost { width: auto; margin: 0; padding: 6px 12px; border: 1px solid #c3d2dd;
+                       border-radius: 6px; background: #fff; color: #44586a;
+                       font-size: 12px; font-weight: 600; cursor: pointer; }
+
+.library-empty { margin: 10px 0 0; font-size: 13px; color: #6b7785; }
+
+.library-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px;
+                max-height: 340px; overflow: auto; }
+.library-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+                   gap: 10px; padding: 10px 12px; border: 1px solid #e2eaf0; border-radius: 8px;
+                   background: #fff; }
+.library-list li.active { border-color: #168395; box-shadow: inset 3px 0 0 #168395; }
+
+.library-info { min-width: 0; flex: 1 1 260px; }
+.library-info b { display: block; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
+.library-info small { display: block; margin-top: 3px; font-size: 11.5px; color: #74838f; }
+
+.library-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.library-actions button { width: auto; margin: 0; border: 0; border-radius: 6px; padding: 7px 13px;
+                          font-size: 12px; font-weight: 700; color: #fff; cursor: pointer; }
+.library-actions .open { background: #168395; }
+.library-actions .open:hover { background: #0f6b7a; }
+.library-actions .danger { background: #c62828; }
+.library-actions .ghost { background: #fff; color: #566673; border: 1px solid #cfdae2; font-weight: 600; }
+.library-actions .ghost:hover { background: #eef3f7; }
+.library-now { align-self: center; padding: 7px 11px; font-size: 12px; font-weight: 700; color: #0f6b7a; }
+
+.library-note { margin: 12px 0 0; font-size: 11.5px; line-height: 1.5; color: #74838f; }
+
+.start-screen .library-panel { margin-bottom: 26px; }

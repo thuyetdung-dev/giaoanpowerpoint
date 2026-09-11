@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MathVisual, MixedMath, VISUAL_LABEL } from "@/components/MathVisuals";
-import { generateLesson, scanGeminiModels, type GeminiModel } from "@/lib/gemini-client";
+import { generateLesson, scanModels, scanModelsViaServer, PROVIDERS, type AiModel, type Provider } from "@/lib/ai";
 import type { Lesson, Section, Visual } from "@/lib/types";
 import { auditLesson, repairLesson, type AuditItem } from "@/lib/audit";
 import { readSource, type SourceDoc } from "@/lib/importer";
@@ -23,8 +23,10 @@ import { exportHtml, exportJson, exportPptx, exportPreviewImage, exportWorksheet
 import { THEMES, PHASE_META, getTheme } from "@/lib/themes";
 import { SlideFrame, Presenter } from "@/components/SlideView";
 import { buildDeck, findSlideForSection } from "@/lib/slides";
-
-const STORAGE_KEY = "lessonstudio.v11.draft";
+import {
+  duplicateEntry, listLibrary, migrateLegacyDraft, newId, QUOTA_HINT, readActiveId,
+  readEntry, readForm, removeEntry, saveEntry, writeActiveId, writeForm, type LibraryMeta,
+} from "@/lib/library";
 
 type FormState = {
   teacher: string; school: string; grade: string; book: string; lesson: string;
@@ -38,13 +40,96 @@ const INITIAL: FormState = {
 
 const PHASES = Object.entries(PHASE_META);
 
+/** "19/04 lúc 15:32" — đủ để phân biệt các lần sửa trong cùng một tuần. */
+function whenLabel(ms: number): string {
+  if (!ms) return "—";
+  try {
+    return new Intl.DateTimeFormat("vi-VN", {
+      day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+    }).format(new Date(ms)).replace(", ", " lúc ");
+  } catch {
+    return "—";
+  }
+}
+
+/**
+ * Danh sách bài giảng đã lưu trong trình duyệt.
+ *
+ * Dùng ở hai chỗ với cùng một mã: bảng thả xuống trong trình biên tập và khối
+ * "mở lại bài cũ" ở màn hình khởi đầu. Nhờ vậy hai nơi không bao giờ lệch nhau.
+ */
+function LibraryPanel({
+  items, activeId, confirmDelete, onOpen, onCopy, onAskDelete, onDelete, onCancelDelete, onClose,
+}: {
+  items: LibraryMeta[];
+  activeId: string | null;
+  confirmDelete: string | null;
+  onOpen: (id: string) => void;
+  onCopy: (id: string) => void;
+  onAskDelete: (id: string) => void;
+  onDelete: (id: string) => void;
+  onCancelDelete: () => void;
+  onClose?: () => void;
+}) {
+  return (
+    <div className="library-panel">
+      <div className="library-head">
+        <b>Thư viện bài giảng · {items.length} bài</b>
+        {onClose && <button className="ghost" onClick={onClose}>Đóng</button>}
+      </div>
+
+      {!items.length ? (
+        <p className="library-empty">
+          Chưa có bài nào. Mỗi bài bạn tạo hoặc nạp từ JSON sẽ tự động vào đây, không cần bấm lưu.
+        </p>
+      ) : (
+        <ul className="library-list">
+          {items.map((m) => (
+            <li key={m.id} className={m.id === activeId ? "active" : ""}>
+              <div className="library-info">
+                <b>{m.title}</b>
+                <small>
+                  {[m.grade, m.book].filter(Boolean).join(" · ")}
+                  {m.grade || m.book ? " · " : ""}
+                  {m.slides} slide · {m.visuals} hình · sửa {whenLabel(m.updatedAt)}
+                </small>
+              </div>
+              <div className="library-actions">
+                {m.id === activeId
+                  ? <span className="library-now">● Đang mở</span>
+                  : <button className="open" onClick={() => onOpen(m.id)}>Mở</button>}
+                <button className="ghost" onClick={() => onCopy(m.id)}>Nhân bản</button>
+                {confirmDelete === m.id ? (
+                  <>
+                    <button className="danger" onClick={() => onDelete(m.id)}>Xoá hẳn</button>
+                    <button className="ghost" onClick={onCancelDelete}>Không</button>
+                  </>
+                ) : (
+                  <button className="ghost" onClick={() => onAskDelete(m.id)}>Xoá</button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="library-note">
+        Thư viện nằm trong trình duyệt này, trên máy này — xoá dữ liệu duyệt web, dùng cửa sổ ẩn danh
+        hoặc đổi sang máy khác là không còn. Bài nào cần giữ lâu dài, hãy bấm <b>Lưu JSON</b> để có
+        tệp trên ổ đĩa.
+      </p>
+    </div>
+  );
+}
+
 export default function Page() {
   const [form, setForm] = useState<FormState>(INITIAL);
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [documents, setDocuments] = useState<SourceDoc[]>([]);
   const [apiKey, setApiKey] = useState("");
   const [useServerKey, setUseServerKey] = useState(false);
-  const [models, setModels] = useState<GeminiModel[]>([]);
+  const [provider, setProvider] = useState<Provider>("gemini");
+  const [models, setModels] = useState<AiModel[]>([]);
   const [model, setModel] = useState("auto");
   const [message, setMessage] = useState("Sẵn sàng");
   const [busy, setBusy] = useState(false);
@@ -57,35 +142,63 @@ export default function Page() {
   const [visualDraft, setVisualDraft] = useState<{ index: number; text: string } | null>(null);
   const [presenting, setPresenting] = useState<number | null>(null);
 
+  /* ---------- Thư viện bài giảng ---------- */
+  /** Chỉ mục các bài đã lưu trong trình duyệt này. */
+  const [library, setLibrary] = useState<LibraryMeta[]>([]);
+  /** Id của bài đang mở; null nghĩa là bài chưa từng được lưu. */
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [showLibrary, setShowLibrary] = useState(false);
+  /** Id đang chờ xác nhận xoá — xoá là mất hẳn nên phải hỏi lại. */
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
   const previewRef = useRef<HTMLElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   /* ---------- Tự lưu / khôi phục ---------- */
 
+  /** Mở trang: chuyển bản nháp kiểu cũ vào thư viện rồi mở lại bài làm dở gần nhất. */
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as { form?: FormState; lesson?: Lesson };
-      if (parsed.form) setForm((f) => ({ ...f, ...parsed.form }));
-      if (parsed.lesson?.sections?.length) {
-        setLesson(parsed.lesson);
-        setAudit(auditLesson(parsed.lesson));
-        setMessage("Đã khôi phục bài giảng đang soạn dở trên máy này.");
-      }
-    } catch {
-      /* bỏ qua: localStorage có thể bị chặn */
+    const migrated = migrateLegacyDraft<FormState>();
+    const index = listLibrary();
+    setLibrary(index);
+
+    const savedForm = readForm<FormState>();
+    if (savedForm) setForm((f) => ({ ...f, ...savedForm }));
+
+    const last = migrated ?? readActiveId();
+    const entry = last ? readEntry<FormState>(last) : null;
+    if (entry) {
+      if (entry.form) setForm((f) => ({ ...f, ...entry.form }));
+      setLesson(entry.lesson);
+      setAudit(auditLesson(entry.lesson));
+      setActiveId(last);
+      setMessage(`Đã mở lại “${entry.lesson.title}”. Thư viện đang giữ ${index.length} bài.`);
+    } else if (index.length) {
+      setMessage(`Thư viện có ${index.length} bài giảng đã lưu trên máy này.`);
     }
   }, []);
 
+  /**
+   * Tự lưu bài đang mở vào thư viện.
+   *
+   * Bài chưa có id thì cấp id ngay tại đây, nên một bài vừa sinh ra đã nằm
+   * trong thư viện — không cần giáo viên nhớ bấm lưu.
+   */
   useEffect(() => {
-    const id = setTimeout(() => {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ form, lesson }));
-      } catch { /* hết dung lượng hoặc chế độ riêng tư */ }
+    const timer = setTimeout(() => {
+      writeForm(form);
+      if (!lesson?.sections?.length) return;
+
+      const id = activeId ?? newId();
+      const result = saveEntry(id, form, lesson);
+      if (!result.ok) { setMessage(result.error || QUOTA_HINT); return; }
+
+      writeActiveId(id);
+      if (!activeId) setActiveId(id);
+      setLibrary(listLibrary());
     }, 600);
-    return () => clearTimeout(id);
-  }, [form, lesson]);
+    return () => clearTimeout(timer);
+  }, [form, lesson, activeId]);
 
   /* ---------- Tiện ích ---------- */
 
@@ -111,19 +224,30 @@ export default function Page() {
 
   /* ---------- Kết nối Gemini ---------- */
 
-  async function scan(): Promise<GeminiModel[]> {
-    if (!apiKey.trim()) { setMessage("Vui lòng dán khoá API Gemini, hoặc bật chế độ dùng khoá của nhà trường."); return []; }
+  /** Lấy danh sách mô hình — từ khoá trong trình duyệt, hoặc từ khoá trên máy chủ. */
+  async function scan(): Promise<AiModel[]> {
     try {
-      const found = await scanGeminiModels(apiKey.trim());
+      const found = useServerKey
+        ? await scanModelsViaServer(provider)
+        : apiKey.trim()
+        ? await scanModels(provider, apiKey.trim())
+        : [];
+      if (!found.length) {
+        setMessage(useServerKey
+          ? "Máy chủ chưa cấu hình khoá cho nhà cung cấp này."
+          : "Vui lòng dán khoá API, hoặc bật chế độ dùng khoá của nhà trường.");
+        return [];
+      }
       setModels(found);
-      if (found[0]) setModel(found[0].name);
-      setMessage(`Đã kết nối ${found.length} mô hình. Ưu tiên: ${found[0]?.displayName || found[0]?.name || "—"}`);
+      if (found[0]) setModel(found[0].id);
+      setMessage(`Đã kết nối ${found.length} mô hình. Đang dùng: ${found[0]?.label ?? "—"}`);
       return found;
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Không kiểm tra được khoá API");
+      setMessage(e instanceof Error ? e.message : "Không kiểm tra được khoá");
       return [];
     }
   }
+
 
   async function importSources(list: FileList | null) {
     if (!list) return;
@@ -150,6 +274,9 @@ export default function Page() {
       const doc = await readSource(file);
       const parsed = JSON.parse(doc.text) as Lesson;
       if (!parsed.sections) throw new Error("thiếu trường sections");
+      // activeId = null để bài nạp vào được lưu thành MỘT MỤC MỚI trong thư viện,
+      // không ghi đè lên bài đang mở.
+      setActiveId(null);
       applyLesson(parsed);
       setSelected(0);
       setMessage(`Đã nạp bài giảng "${parsed.title}" gồm ${parsed.sections.length} slide.`);
@@ -159,7 +286,7 @@ export default function Page() {
   }
 
   async function generate() {
-    if (!useServerKey && !apiKey.trim()) { setMessage("Hãy dán khoá API Gemini hoặc bật chế độ dùng khoá của nhà trường."); return; }
+    if (!useServerKey && !apiKey.trim()) { setMessage("Hãy dán khoá API, hoặc bật chế độ dùng khoá của nhà trường."); return; }
     if (!form.lesson.trim() && !documents.length) { setMessage("Hãy nhập tên bài hoặc tải lên tài liệu nguồn."); return; }
 
     const controller = new AbortController();
@@ -170,12 +297,14 @@ export default function Page() {
     try {
       let chosen = model;
       let available = models;
-      if (!useServerKey && (chosen === "auto" || available.length < 2)) {
+      if (chosen === "auto" || available.length < 2) {
         available = await scan();
-        if (!available.length) throw new Error("Không tìm thấy mô hình Gemini phù hợp với khoá này.");
-        if (chosen === "auto") chosen = available[0].name;
+        if (available.length && chosen === "auto") chosen = available[0].id;
       }
-      if (useServerKey) chosen = "models/gemini-2.5-pro";
+      if (chosen === "auto") {
+        // Không dò được danh sách (thường do khoá nằm ở máy chủ): để máy chủ tự chọn.
+        chosen = "";
+      }
 
       const context = documents
         .map((d, i) => `[TÀI LIỆU ${i + 1}: ${d.name}]\n${d.text}`)
@@ -183,6 +312,7 @@ export default function Page() {
         .slice(0, 180_000);
 
       const result = await generateLesson({
+        provider,
         apiKey: apiKey.trim(),
         model: chosen,
         fallbackModels: available,
@@ -204,6 +334,7 @@ export default function Page() {
       });
 
       const { lesson: repaired, changes, unresolved } = repairLesson(result.lesson);
+      setActiveId(null); // bài vừa sinh ra là một mục mới trong thư viện
       applyLesson(repaired);
       setSelected(0);
       setModel(result.modelUsed);
@@ -230,6 +361,82 @@ export default function Page() {
 
   function stop() {
     abortRef.current?.abort();
+  }
+
+  /* ---------- Thư viện ---------- */
+
+  /** Dọn trình biên tập, giữ nguyên thông tin thanh bên. Không đụng tới thư viện. */
+  const clearEditor = useCallback(() => {
+    abortRef.current?.abort();
+    setLesson(null);
+    setAudit([]);
+    setSelected(0);
+    setEditing(false);
+    setVisualDraft(null);
+    setPresenting(null);
+    setBusy(false);
+    setActiveId(null);
+    writeActiveId(null);
+  }, []);
+
+  /**
+   * Quay về màn hình khởi đầu để soạn bài khác.
+   *
+   * V11.3 trở về trước không có hàm này: màn hình khởi đầu chỉ hiện khi `lesson`
+   * còn rỗng, mà bản nháp lại tự khôi phục mỗi lần mở trang, nên soạn xong bài
+   * đầu tiên là kẹt luôn trong trình biên tập. Từ V11.5 thao tác này không còn
+   * nguy hiểm: bài đang soạn đã nằm sẵn trong thư viện, mở lại lúc nào cũng được.
+   */
+  function startNewLesson() {
+    const keptTitle = lesson?.title;
+    clearEditor();
+    setShowLibrary(false);
+    setLibrary(listLibrary());
+    setMessage(
+      keptTitle
+        ? `“${keptTitle}” đã cất vào Thư viện. Nhập tên bài mới rồi bấm TẠO POWERPOINT BÀI GIẢNG.`
+        : "Nhập tên bài rồi bấm TẠO POWERPOINT BÀI GIẢNG.",
+    );
+  }
+
+  /** Mở một bài đã lưu. Bài đang soạn không mất: nó cũng nằm trong thư viện. */
+  function openEntry(id: string) {
+    const entry = readEntry<FormState>(id);
+    if (!entry) {
+      setLibrary(listLibrary());
+      setMessage("Không mở được bài này — dữ liệu trong trình duyệt đã hỏng hoặc bị xoá.");
+      return;
+    }
+    abortRef.current?.abort();
+    if (entry.form) setForm((f) => ({ ...f, ...entry.form }));
+    applyLesson(entry.lesson);
+    setActiveId(id);
+    writeActiveId(id);
+    setSelected(0);
+    setEditing(false);
+    setVisualDraft(null);
+    setPresenting(null);
+    setBusy(false);
+    setShowLibrary(false);
+    setConfirmDelete(null);
+    setMessage(`Đã mở “${entry.lesson.title}” (${entry.lesson.sections.length} slide).`);
+  }
+
+  function copyEntry(id: string) {
+    const copy = duplicateEntry<FormState>(id);
+    setLibrary(listLibrary());
+    setMessage(copy
+      ? "Đã nhân bản. Bản sao dùng để soạn biến thể cho lớp khác mà không động vào bài gốc."
+      : "Không nhân bản được — bộ nhớ trình duyệt đã đầy.");
+  }
+
+  function deleteEntry(id: string) {
+    const gone = library.find((m) => m.id === id)?.title ?? "bài giảng";
+    removeEntry(id);
+    setConfirmDelete(null);
+    if (id === activeId) clearEditor();
+    setLibrary(listLibrary());
+    setMessage(`Đã xoá “${gone}” khỏi thư viện.`);
   }
 
   /* ---------- Xuất bản ---------- */
@@ -364,25 +571,62 @@ export default function Page() {
         <label className="check"><input type="checkbox" checked={interactive} onChange={(e) => setInteractive(e.target.checked)} /> Chèn slide trắc nghiệm tương tác</label>
 
         <div className="key-box">
+          <label>Nguồn AI
+            <select
+              value={provider}
+              onChange={(e) => {
+                setProvider(e.target.value as Provider);
+                setModels([]);
+                setModel("auto");
+                setMessage("Đã đổi nguồn AI. Bấm \u201cDò\u201d để lấy danh sách mô hình.");
+              }}
+            >
+              {PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          </label>
+          <p className="key-note">{PROVIDERS.find((p) => p.id === provider)?.hint}</p>
+
           <label className="check">
-            <input type="checkbox" checked={useServerKey} onChange={(e) => setUseServerKey(e.target.checked)} />
+            <input type="checkbox" checked={useServerKey} onChange={(e) => { setUseServerKey(e.target.checked); setModels([]); setModel("auto"); }} />
             Dùng khoá chung của nhà trường
           </label>
+
           {!useServerKey && (
             <>
-              <label>🔑 Khoá API Gemini
-                <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Dán khoá API" autoComplete="off" />
+              <label>🔑 Khoá API {PROVIDERS.find((p) => p.id === provider)?.label}
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={provider === "openai" ? "sk-..." : "Dán khoá API"}
+                  autoComplete="off"
+                />
               </label>
-              <div>
-                <select value={model} onChange={(e) => setModel(e.target.value)}>
-                  <option value="auto">Tự động chọn mô hình</option>
-                  {models.map((m) => <option key={m.name} value={m.name}>{m.displayName || m.name}</option>)}
-                </select>
-                <button type="button" onClick={scan}>Dò</button>
-              </div>
-              <p className="key-note">Khoá chỉ nằm trong trình duyệt của bạn, không gửi về máy chủ LessonStudio.</p>
+              {provider === "openai" && (
+                <p className="key-warn">
+                  ⚠ Khoá OpenAI tính tiền theo lượng chữ. Nếu trang này ai cũng mở được,
+                  <b> đừng dán khoá ở đây</b> — người khác có thể lấy khoá và tiêu tiền của bạn.
+                  Hãy đặt khoá vào biến <code>OPENAI_API_KEY</code> trên Vercel rồi tích ô
+                  &ldquo;Dùng khoá chung của nhà trường&rdquo;.
+                </p>
+              )}
+              <p className="key-note">{PROVIDERS.find((p) => p.id === provider)?.keyHint}</p>
             </>
           )}
+
+          <div>
+            <select value={model} onChange={(e) => setModel(e.target.value)}>
+              <option value="auto">Tự động chọn mô hình</option>
+              {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+            <button type="button" onClick={scan}>Dò</button>
+          </div>
+
+          <p className="key-note">
+            {useServerKey
+              ? "Khoá nằm trên máy chủ, trình duyệt không nhìn thấy — cách an toàn nhất."
+              : "Khoá chỉ nằm trong trình duyệt của bạn, không gửi về máy chủ LessonStudio."}
+          </p>
         </div>
       </aside>
 
@@ -397,6 +641,22 @@ export default function Page() {
 
         {!lesson ? (
           <div className="start-screen">
+            {library.length > 0 && (
+              <>
+                <h2>Bài giảng đã lưu trên máy này</h2>
+                <LibraryPanel
+                  items={library}
+                  activeId={activeId}
+                  confirmDelete={confirmDelete}
+                  onOpen={openEntry}
+                  onCopy={copyEntry}
+                  onAskDelete={setConfirmDelete}
+                  onDelete={deleteEntry}
+                  onCancelDelete={() => setConfirmDelete(null)}
+                />
+              </>
+            )}
+
             <h2>1. Tài liệu nguồn (không bắt buộc)</h2>
             <p>PDF, Word, TXT, Markdown hoặc JSON — tối đa 8 tệp, mỗi tệp 20 MB.</p>
             <label className="upload">
@@ -440,6 +700,13 @@ export default function Page() {
                 </h2>
               </div>
               <div className="export-actions">
+                <button
+                  className={showLibrary ? "library-btn on" : "library-btn"}
+                  onClick={() => { setShowLibrary((x) => !x); setConfirmDelete(null); }}
+                >
+                  ▤ Thư viện ({library.length})
+                </button>
+                <button className="newlesson" onClick={startNewLesson}>✚ Bài mới</button>
                 <button className="present" onClick={() => setPresenting(deckIndex)}>⛶ Trình chiếu</button>
                 <button className="trial" onClick={() => exportDeck(10)} disabled={busy}>Xem thử 10 slide</button>
                 <button onClick={() => exportDeck()} disabled={busy}>⬇ Xuất PowerPoint</button>
@@ -449,6 +716,20 @@ export default function Page() {
                 <button onClick={() => exportPreviewImage(previewRef.current!, lesson.title)}>Ảnh PNG</button>
               </div>
             </div>
+
+            {showLibrary && (
+              <LibraryPanel
+                items={library}
+                activeId={activeId}
+                confirmDelete={confirmDelete}
+                onOpen={openEntry}
+                onCopy={copyEntry}
+                onAskDelete={setConfirmDelete}
+                onDelete={deleteEntry}
+                onCancelDelete={() => setConfirmDelete(null)}
+                onClose={() => { setShowLibrary(false); setConfirmDelete(null); }}
+              />
+            )}
 
             <div className="quality-summary">
               <span className={errors.length ? "bad" : "good"}>

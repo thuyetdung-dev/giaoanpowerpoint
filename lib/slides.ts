@@ -108,10 +108,30 @@ export const LAYOUT = {
 export type Box = { x: number; y: number; w: number; h: number };
 
 /**
+ * Mỗi loại hình cần một lượng chiều cao khác nhau. Chia đều là sai: câu hỏi
+ * trắc nghiệm 4 phương án cần gần gấp rưỡi một bảng xét dấu, nếu chia đều thì
+ * phương án cuối bị cắt mất — học sinh không thấy đáp án D.
+ */
+const HEIGHT_WEIGHT: Record<string, number> = {
+  quiz: 1.55,
+  data_table: 1.25,
+  prob_tree: 1.15,
+  box_plot: 1.1,
+  variation_table: 1.0,
+  solid_3d: 1.0,
+  graph: 1.0,
+  stat_chart: 1.0,
+  sign_chart: 0.75,
+  number_line: 0.6,
+  formula: 0.6,
+};
+
+/**
  * Vị trí từng ô hình (inch). Slide chính: hình nằm bên phải khối chữ.
  * Slide "(tiếp)": hình chiếm trọn chiều ngang vì không còn khối chữ.
+ * `types` không bắt buộc; có thì chiều cao được chia theo nhu cầu từng loại.
  */
-export function visualBoxes(part: number, count: number): Box[] {
+export function visualBoxes(part: number, count: number, types?: string[]): Box[] {
   const first = part === 0;
   const x = first ? 5.08 : 0.62;
   const w = first ? 7.62 : 12.1;
@@ -119,8 +139,19 @@ export function visualBoxes(part: number, count: number): Box[] {
   const total = first ? 5.15 : 4.9;
   const gap = 0.3;
   if (count <= 1) return [{ x, y: top, w, h: total }];
-  const h = (total - gap * (count - 1)) / count;
-  return Array.from({ length: count }, (_, k) => ({ x, y: top + k * (h + gap), w, h }));
+
+  const weights = Array.from({ length: count }, (_, k) => HEIGHT_WEIGHT[types?.[k] ?? ""] ?? 1);
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const usable = total - gap * (count - 1);
+
+  const boxes: Box[] = [];
+  let y = top;
+  for (let k = 0; k < count; k++) {
+    const h = (usable * weights[k]) / sum;
+    boxes.push({ x, y, w, h });
+    y += h + gap;
+  }
+  return boxes;
 }
 
 /* ------------------------------------------------------------------ */

@@ -335,7 +335,7 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
           });
         }
 
-        const boxes = visualBoxes(ci, group.length);
+        const boxes = visualBoxes(ci, group.length, group.map((vi) => visuals[vi].type));
         for (let k = 0; k < group.length; k++) {
           const vi = group[k];
           const node = nodes[vi];

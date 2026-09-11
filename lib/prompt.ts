@@ -30,8 +30,14 @@ Danh mục hình được phép (KHÔNG tạo ảnh, chỉ tạo dữ liệu JSO
 16 {"type":"quiz","question":"...","options":["...","...","...","..."],"answerIndex":0,"explanation":"...","timer":30}
 
 Quy tắc dữ liệu bắt buộc:
+- MỌI mảng "x" của variation_table và sign_chart đều là MẢNG CHUỖI và PHẢI LIỆT KÊ CẢ HAI ĐẦU MÚT. Viết "-\\infty" ở đầu và "+\\infty" ở cuối (hoặc đầu mút thật của tập xác định). Đây là lỗi hay gặp nhất: viết x = ["-1","1"] rồi cho 3 ô dấu là SAI, vì 3 ô dấu ứng với 3 khoảng, tức 4 mốc.
+- sign_chart: gọi n là số phần tử của "x". Mảng "signs" phải có ĐÚNG 2n-3 phần tử (xen kẽ dấu trên khoảng và giá trị tại nghiệm) HOẶC đúng n-1 phần tử (chỉ ghi dấu trên các khoảng). Ví dụ đúng cho f'(x) = 3x^2-3:
+  {"type":"sign_chart","label":"f'(x)","x":["-\\infty","-1","1","+\\infty"],"signs":["+","0","-","0","+"]}
+  (4 mốc -> 2*4-3 = 5 ô. Nếu chỉ ghi dấu khoảng thì dùng 3 ô: ["+","-","+"].)
 - variation_table: "x" là các mốc theo thứ tự tăng; "derivative" xen kẽ DẤU trên khoảng và giá trị tại mốc, độ dài đúng bằng 2*số_mốc-3 (4 mốc -> ["+","0","-","0","+"]); "values" có đúng số phần tử bằng "x". Luôn điền thêm "expression" để phần mềm tự kiểm chứng bằng đạo hàm số học — nếu dấu sai, bài giảng sẽ bị chặn xuất.
 - graph: "expression" viết cú pháp phẳng, được dùng x, số, + - * / ^ ( ) và các hàm sin, cos, tan, cot, ln, log, sqrt, abs, exp. Miền yMin/yMax phải bao trọn phần đồ thị cần cho bài.
+- TUYỆT ĐỐI KHÔNG kẻ bảng bằng ký tự "|" hay "-" trong trường "content". Chiếu lên màn hình chỉ ra một dãy chữ lộn xộn. Khi đề bài cần một bảng, hãy đưa bảng đó vào "visuals" dưới dạng variation_table / sign_chart / data_table, và trong "content" chỉ viết "Cho hàm số $y=f(x)$ có bảng biến thiên bên cạnh."
+- Câu hỏi trắc nghiệm dựa trên một bảng biến thiên cho sẵn thì slide đó PHẢI có đồng thời hai hình: một "variation_table" (bảng đề cho) và một "quiz" (câu hỏi). Thiếu bảng thì học sinh không có gì để nhìn mà trả lời.
 - Mọi giá trị số phải TỰ NHẤT QUÁN: điểm cực trị phải nằm trên đồ thị, tổng xác suất mỗi tầng bằng 1, min ≤ Q1 ≤ Q2 ≤ Q3 ≤ max.
 `.trim();
 
