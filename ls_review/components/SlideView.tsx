@@ -64,7 +64,7 @@ function Chrome({ t, title, phase, number }: { t: Theme; title: string; phase?: 
         style={{
           left: px(LAYOUT.title.x), top: px(LAYOUT.title.y), height: px(LAYOUT.title.h),
           width: px(meta ? LAYOUT.title.wNarrow : LAYOUT.title.wWide),
-          fontFamily: `"${t.headFont}", Georgia, serif`, fontSize: pt(LAYOUT.title.pt), color: `#${t.ink}`,
+          fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif`, fontSize: pt(LAYOUT.title.pt), color: `#${t.ink}`,
         }}
       >
         <MixedMath value={title} />
@@ -155,7 +155,7 @@ export function SlideBoard({
         <div className="sl-abs" style={{ left: px(1.25), top: px(1.0), fontSize: pt(13), letterSpacing: "0.18em", color: `#${t.accent}`, fontWeight: 700, fontFamily: `"${t.bodyFont}", sans-serif` }}>
           BÀI GIẢNG MÔN TOÁN · THPT
         </div>
-        <div className="sl-abs sl-covertitle" style={{ left: px(1.25), top: px(1.6), width: px(10.5), height: px(1.7), fontSize: pt(36), color: `#${t.coverInk}`, fontFamily: `"${t.headFont}", Georgia, serif` }}>
+        <div className="sl-abs sl-covertitle" style={{ left: px(1.25), top: px(1.6), width: px(10.5), height: px(1.7), fontSize: pt(36), color: `#${t.coverInk}`, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}>
           <MixedMath value={lesson.title} />
         </div>
         <div className="sl-abs" style={{ left: px(1.25), top: px(3.6), width: px(2.2), height: 4, background: `#${t.accent}` }} />
@@ -183,7 +183,7 @@ export function SlideBoard({
         <div className="sl-abs" style={{ left: 0, top: px(3.05), width: px(SLIDE_W_IN), height: px(0.08), background: `#${m?.color || t.accent}` }} />
         <div
           className="sl-abs sl-center"
-          style={{ left: 0, top: px(3.2), width: px(SLIDE_W_IN), height: px(0.9), fontSize: pt(40), color: `#${t.coverInk}`, letterSpacing: "0.14em", fontWeight: 700, fontFamily: `"${t.headFont}", Georgia, serif` }}
+          style={{ left: 0, top: px(3.2), width: px(SLIDE_W_IN), height: px(0.9), fontSize: pt(40), color: `#${t.coverInk}`, letterSpacing: "0.14em", fontWeight: 700, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}
         >
           {(m?.label || "Hoạt động").toUpperCase()}
         </div>
@@ -194,7 +194,7 @@ export function SlideBoard({
   if (spec.kind === "end") {
     return (
       <div className="sl-body" style={{ background: `#${t.coverBg}` }}>
-        <div className="sl-abs sl-center" style={{ left: px(0.8), top: px(3.0), width: px(11.7), height: px(1.2), fontSize: pt(30), color: `#${t.coverInk}`, fontWeight: 700, fontFamily: `"${t.headFont}", Georgia, serif` }}>
+        <div className="sl-abs sl-center" style={{ left: px(0.8), top: px(3.0), width: px(11.7), height: px(1.2), fontSize: pt(30), color: `#${t.coverInk}`, fontWeight: 700, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}>
           CẢM ƠN CÁC EM ĐÃ THAM GIA TIẾT HỌC
         </div>
         {lesson.keywords?.length ? (
@@ -243,7 +243,7 @@ export function SlideBoard({
             style={{
               left: px(LAYOUT.textOnly.number.x), top: px(LAYOUT.textOnly.number.y),
               fontSize: pt(LAYOUT.textOnly.number.pt), color: `#${t.accent}`, fontWeight: 700,
-              fontFamily: `"${t.headFont}", Georgia, serif`,
+              fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif`,
             }}
           >
             {String(spec.sectionIndex + 1).padStart(2, "0")}

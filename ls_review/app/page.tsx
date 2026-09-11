@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MathVisual, MixedMath, VISUAL_LABEL } from "@/components/MathVisuals";
-import { generateLesson, scanGeminiModels, type GeminiModel } from "@/lib/gemini-client";
+import { generateLesson, scanModels, scanModelsViaServer, PROVIDERS, type AiModel, type Provider } from "@/lib/ai";
 import type { Lesson, Section, Visual } from "@/lib/types";
 import { auditLesson, repairLesson, type AuditItem } from "@/lib/audit";
 import { readSource, type SourceDoc } from "@/lib/importer";
@@ -44,7 +44,8 @@ export default function Page() {
   const [documents, setDocuments] = useState<SourceDoc[]>([]);
   const [apiKey, setApiKey] = useState("");
   const [useServerKey, setUseServerKey] = useState(false);
-  const [models, setModels] = useState<GeminiModel[]>([]);
+  const [provider, setProvider] = useState<Provider>("gemini");
+  const [models, setModels] = useState<AiModel[]>([]);
   const [model, setModel] = useState("auto");
   const [message, setMessage] = useState("Sẵn sàng");
   const [busy, setBusy] = useState(false);
@@ -111,19 +112,30 @@ export default function Page() {
 
   /* ---------- Kết nối Gemini ---------- */
 
-  async function scan(): Promise<GeminiModel[]> {
-    if (!apiKey.trim()) { setMessage("Vui lòng dán khoá API Gemini, hoặc bật chế độ dùng khoá của nhà trường."); return []; }
+  /** Lấy danh sách mô hình — từ khoá trong trình duyệt, hoặc từ khoá trên máy chủ. */
+  async function scan(): Promise<AiModel[]> {
     try {
-      const found = await scanGeminiModels(apiKey.trim());
+      const found = useServerKey
+        ? await scanModelsViaServer(provider)
+        : apiKey.trim()
+        ? await scanModels(provider, apiKey.trim())
+        : [];
+      if (!found.length) {
+        setMessage(useServerKey
+          ? "Máy chủ chưa cấu hình khoá cho nhà cung cấp này."
+          : "Vui lòng dán khoá API, hoặc bật chế độ dùng khoá của nhà trường.");
+        return [];
+      }
       setModels(found);
-      if (found[0]) setModel(found[0].name);
-      setMessage(`Đã kết nối ${found.length} mô hình. Ưu tiên: ${found[0]?.displayName || found[0]?.name || "—"}`);
+      if (found[0]) setModel(found[0].id);
+      setMessage(`Đã kết nối ${found.length} mô hình. Đang dùng: ${found[0]?.label ?? "—"}`);
       return found;
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Không kiểm tra được khoá API");
+      setMessage(e instanceof Error ? e.message : "Không kiểm tra được khoá");
       return [];
     }
   }
+
 
   async function importSources(list: FileList | null) {
     if (!list) return;
@@ -159,7 +171,7 @@ export default function Page() {
   }
 
   async function generate() {
-    if (!useServerKey && !apiKey.trim()) { setMessage("Hãy dán khoá API Gemini hoặc bật chế độ dùng khoá của nhà trường."); return; }
+    if (!useServerKey && !apiKey.trim()) { setMessage("Hãy dán khoá API, hoặc bật chế độ dùng khoá của nhà trường."); return; }
     if (!form.lesson.trim() && !documents.length) { setMessage("Hãy nhập tên bài hoặc tải lên tài liệu nguồn."); return; }
 
     const controller = new AbortController();
@@ -170,12 +182,14 @@ export default function Page() {
     try {
       let chosen = model;
       let available = models;
-      if (!useServerKey && (chosen === "auto" || available.length < 2)) {
+      if (chosen === "auto" || available.length < 2) {
         available = await scan();
-        if (!available.length) throw new Error("Không tìm thấy mô hình Gemini phù hợp với khoá này.");
-        if (chosen === "auto") chosen = available[0].name;
+        if (available.length && chosen === "auto") chosen = available[0].id;
       }
-      if (useServerKey) chosen = "models/gemini-2.5-pro";
+      if (chosen === "auto") {
+        // Không dò được danh sách (thường do khoá nằm ở máy chủ): để máy chủ tự chọn.
+        chosen = "";
+      }
 
       const context = documents
         .map((d, i) => `[TÀI LIỆU ${i + 1}: ${d.name}]\n${d.text}`)
@@ -183,6 +197,7 @@ export default function Page() {
         .slice(0, 180_000);
 
       const result = await generateLesson({
+        provider,
         apiKey: apiKey.trim(),
         model: chosen,
         fallbackModels: available,
@@ -364,25 +379,62 @@ export default function Page() {
         <label className="check"><input type="checkbox" checked={interactive} onChange={(e) => setInteractive(e.target.checked)} /> Chèn slide trắc nghiệm tương tác</label>
 
         <div className="key-box">
+          <label>Nguồn AI
+            <select
+              value={provider}
+              onChange={(e) => {
+                setProvider(e.target.value as Provider);
+                setModels([]);
+                setModel("auto");
+                setMessage("Đã đổi nguồn AI. Bấm \u201cDò\u201d để lấy danh sách mô hình.");
+              }}
+            >
+              {PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          </label>
+          <p className="key-note">{PROVIDERS.find((p) => p.id === provider)?.hint}</p>
+
           <label className="check">
-            <input type="checkbox" checked={useServerKey} onChange={(e) => setUseServerKey(e.target.checked)} />
+            <input type="checkbox" checked={useServerKey} onChange={(e) => { setUseServerKey(e.target.checked); setModels([]); setModel("auto"); }} />
             Dùng khoá chung của nhà trường
           </label>
+
           {!useServerKey && (
             <>
-              <label>🔑 Khoá API Gemini
-                <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Dán khoá API" autoComplete="off" />
+              <label>🔑 Khoá API {PROVIDERS.find((p) => p.id === provider)?.label}
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={provider === "openai" ? "sk-..." : "Dán khoá API"}
+                  autoComplete="off"
+                />
               </label>
-              <div>
-                <select value={model} onChange={(e) => setModel(e.target.value)}>
-                  <option value="auto">Tự động chọn mô hình</option>
-                  {models.map((m) => <option key={m.name} value={m.name}>{m.displayName || m.name}</option>)}
-                </select>
-                <button type="button" onClick={scan}>Dò</button>
-              </div>
-              <p className="key-note">Khoá chỉ nằm trong trình duyệt của bạn, không gửi về máy chủ LessonStudio.</p>
+              {provider === "openai" && (
+                <p className="key-warn">
+                  ⚠ Khoá OpenAI tính tiền theo lượng chữ. Nếu trang này ai cũng mở được,
+                  <b> đừng dán khoá ở đây</b> — người khác có thể lấy khoá và tiêu tiền của bạn.
+                  Hãy đặt khoá vào biến <code>OPENAI_API_KEY</code> trên Vercel rồi tích ô
+                  &ldquo;Dùng khoá chung của nhà trường&rdquo;.
+                </p>
+              )}
+              <p className="key-note">{PROVIDERS.find((p) => p.id === provider)?.keyHint}</p>
             </>
           )}
+
+          <div>
+            <select value={model} onChange={(e) => setModel(e.target.value)}>
+              <option value="auto">Tự động chọn mô hình</option>
+              {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+            <button type="button" onClick={scan}>Dò</button>
+          </div>
+
+          <p className="key-note">
+            {useServerKey
+              ? "Khoá nằm trên máy chủ, trình duyệt không nhìn thấy — cách an toàn nhất."
+              : "Khoá chỉ nằm trong trình duyệt của bạn, không gửi về máy chủ LessonStudio."}
+          </p>
         </div>
       </aside>
 

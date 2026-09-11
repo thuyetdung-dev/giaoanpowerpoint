@@ -66,3 +66,53 @@ node tests.mjs
 3. Trình sửa hình trực quan (kéo thả mốc bảng biến thiên) thay cho ô JSON.
 4. Nhúng GeoGebra/Desmos cho các hình cần tương tác động.
 5. Thư viện bài giảng dùng chung cho tổ chuyên môn (cần cơ sở dữ liệu).
+
+---
+
+## Phụ lục — bản V11.1
+
+**Khung xem trước là slide thật.** `lib/slides.ts` giữ toàn bộ toạ độ bố cục tính
+bằng inch (hệ của PowerPoint); `components/SlideView.tsx` vẽ lại trên web ở tỉ lệ
+96 px/inch, còn `lib/exporters.ts` dùng thẳng số inch đó. Nhờ chung một nguồn toạ
+độ, những gì hiện trên màn hình khớp với file xuất ra.
+
+**Trình chiếu toàn màn hình.** Nút ⛶ ở thanh trên và cạnh khung slide. Phím ←/→
+hoặc phím cách để chuyển slide, **S** bật/tắt ghi chú giáo viên, **Esc** thoát.
+
+**Nút ghi rõ chữ.** ↑ LÊN · ↓ XUỐNG · ⧉ NHÂN BẢN · 🗑 XOÁ SLIDE · ✎ SỬA SLIDE,
+thay cho các biểu tượng khó đoán. Khi sửa, khung slide vẫn hiển thị phía trên.
+
+**Sửa lỗi hiển thị tiếng Việt.** Phông `Georgia` không có glyph tiếng Việt dựng
+sẵn (ồ, ắ, ầ, ố...), nên trình duyệt phải ghép chữ nền với dấu rời và chữ hiện ra
+thành "nguô`n", "bă´t buộc", "hàm sô´". Đã thay toàn bộ Georgia bằng bộ phông có
+đủ tiếng Việt: `"Times New Roman", Cambria, "Liberation Serif", "Noto Serif",
+"DejaVu Serif", serif`.
+
+**Lưu ý khi chọn phông về sau:** trước khi dùng một phông mới cho giao diện hoặc
+cho slide, hãy thử với chuỗi kiểm tra `ồ ắ ầ ố ề ử ữ ợ ẫ ẳ Ồ Ắ Ầ Ố Ề Ử Ữ Ợ`.
+Nếu dấu bị lệch hay tách rời thì phông đó thiếu glyph tiếng Việt, đừng dùng.
+
+---
+
+## Phụ lục — bản V11.2: hỗ trợ OpenAI
+
+Phần mềm nay gọi được **cả Gemini lẫn OpenAI**. Xem `HUONG_DAN_OPENAI.md` để biết
+các bước cấu hình.
+
+| Tệp | Trạng thái | Vai trò |
+|---|---|---|
+| `lib/ai.ts` | **mới** | Lớp điều phối chung: chọn nhà cung cấp, thử lại, vá JSON, gọi bổ sung slide |
+| `lib/openai-client.ts` | **mới** | Bộ nối OpenAI; tự gỡ tham số mà API không nhận rồi thử lại |
+| `lib/gemini-client.ts` | rút gọn | Chỉ còn phần riêng của Gemini |
+| `app/api/generate/route.ts` | sửa | Nhận `provider`, dùng `OPENAI_API_KEY` hoặc `GEMINI_API_KEY` |
+| `app/api/models/route.ts` | **mới** | Liệt kê mô hình khi khoá nằm trên máy chủ |
+| `app/page.tsx` | sửa | Ô chọn nguồn AI + cảnh báo an toàn cho khoá trả phí |
+| `.env.example` | viết lại | Liệt kê đủ biến môi trường |
+
+**Vì sao không hard-code tên mô hình:** tên mô hình của cả hai hãng đổi vài tháng
+một lần. Phần mềm luôn **hỏi API danh sách mô hình thật của tài khoản** rồi xếp
+hạng, nên không hỏng khi hãng ra bản mới hay khai tử bản cũ.
+
+**Vì sao dòng `pro` bị xếp cuối:** giá gấp nhiều lần mà chênh lệch chất lượng
+không đáng kể với việc soạn bài giảng. `rankOpenAIModel()` trừ điểm dòng này để
+chế độ "Tự động chọn mô hình" không vô tình đốt tiền của giáo viên.
