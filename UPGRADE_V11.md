@@ -54,7 +54,7 @@ Tuyến `/api/generate` có giới hạn 8 lượt/phút cho mỗi IP.
 ```bash
 npx tsc --outDir _build --rootDir . --module esnext --moduleResolution bundler \
         --target ES2020 --skipLibCheck --noEmit false \
-        lib/mathexpr.ts lib/latex.ts lib/bbt.ts
+        lib/mathexpr.ts lib/latex.ts lib/bbt.ts lib/library.ts
 echo '{"type":"module"}' > _build/package.json
 node tests.mjs
 ```
@@ -91,3 +91,122 @@ thành "nguô`n", "bă´t buộc", "hàm sô´". Đã thay toàn bộ Georgia b�
 **Lưu ý khi chọn phông về sau:** trước khi dùng một phông mới cho giao diện hoặc
 cho slide, hãy thử với chuỗi kiểm tra `ồ ắ ầ ố ề ử ữ ợ ẫ ẳ Ồ Ắ Ầ Ố Ề Ử Ữ Ợ`.
 Nếu dấu bị lệch hay tách rời thì phông đó thiếu glyph tiếng Việt, đừng dùng.
+
+---
+
+## Phụ lục — bản V11.2: hỗ trợ OpenAI
+
+Phần mềm nay gọi được **cả Gemini lẫn OpenAI**. Xem `HUONG_DAN_OPENAI.md` để biết
+các bước cấu hình.
+
+| Tệp | Trạng thái | Vai trò |
+|---|---|---|
+| `lib/ai.ts` | **mới** | Lớp điều phối chung: chọn nhà cung cấp, thử lại, vá JSON, gọi bổ sung slide |
+| `lib/openai-client.ts` | **mới** | Bộ nối OpenAI; tự gỡ tham số mà API không nhận rồi thử lại |
+| `lib/gemini-client.ts` | rút gọn | Chỉ còn phần riêng của Gemini |
+| `app/api/generate/route.ts` | sửa | Nhận `provider`, dùng `OPENAI_API_KEY` hoặc `GEMINI_API_KEY` |
+| `app/api/models/route.ts` | **mới** | Liệt kê mô hình khi khoá nằm trên máy chủ |
+| `app/page.tsx` | sửa | Ô chọn nguồn AI + cảnh báo an toàn cho khoá trả phí |
+| `.env.example` | viết lại | Liệt kê đủ biến môi trường |
+
+**Vì sao không hard-code tên mô hình:** tên mô hình của cả hai hãng đổi vài tháng
+một lần. Phần mềm luôn **hỏi API danh sách mô hình thật của tài khoản** rồi xếp
+hạng, nên không hỏng khi hãng ra bản mới hay khai tử bản cũ.
+
+**Vì sao dòng `pro` bị xếp cuối:** giá gấp nhiều lần mà chênh lệch chất lượng
+không đáng kể với việc soạn bài giảng. `rankOpenAIModel()` trừ điểm dòng này để
+chế độ "Tự động chọn mô hình" không vô tình đốt tiền của giáo viên.
+
+---
+
+## Phụ lục — bản V11.3
+
+**Chặn "bảng vẽ bằng ký tự |".** AI hay quên là đã có sẵn loại hình bảng, nên kẻ
+bảng biến thiên bằng dấu gạch đứng ngay trong `content`. Chiếu lên màn hình chỉ
+ra một dãy chữ lộn xộn. Nay có hai cảnh báo mới trong `lib/audit.ts`:
+
+- `ASCII_TABLE` — phát hiện từ 2 dòng trở lên có nhiều dấu `|`.
+- `BBT_MISSING_VISUAL` — đề bài nói "có bảng biến thiên" mà slide không có bảng.
+
+`lib/prompt.ts` cũng cấm thẳng việc này và yêu cầu: câu trắc nghiệm dựa trên một
+bảng biến thiên cho sẵn thì slide phải có ĐỒNG THỜI `variation_table` và `quiz`.
+
+**Chia chiều cao theo loại hình.** `visualBoxes()` trước đây chia đều chiều cao
+cho các hình trên cùng một slide. Với cặp *bảng biến thiên + câu hỏi 4 phương án*
+thì phương án D bị cắt mất — học sinh không thấy đáp án cuối. Nay mỗi loại hình
+có trọng số riêng (`HEIGHT_WEIGHT`): quiz 1,55 — bảng xét dấu 0,75 — trục số 0,6…
+Cả khung xem trước lẫn bộ xuất PPTX dùng chung hàm này nên hai bên vẫn khớp nhau.
+
+---
+
+## Phụ lục — bản V11.4: mở lối ra khỏi trình biên tập
+
+**Lỗi.** Màn hình khởi đầu — nơi đặt ô tải tài liệu, nút *Mở tệp JSON* và nút
+*TẠO POWERPOINT BÀI GIẢNG* — chỉ hiện khi `lesson` còn rỗng (`app/page.tsx`,
+nhánh `{!lesson ? … : …}`). Trong trình biên tập lại không có nút nào đưa
+`lesson` về rỗng. Thêm nữa, bản nháp tự khôi phục từ `localStorage` ngay khi mở
+trang, nên tải lại trang cũng không thoát ra được.
+
+Hệ quả: soạn xong bài đầu tiên là kẹt vĩnh viễn với bài đó. Đổi *Tên bài* ở
+thanh bên không có tác dụng vì không còn nút để bấm tạo.
+
+**Cách sửa.** Thêm nút **✚ Bài mới** ở thanh công cụ trình biên tập. Bấm vào sẽ
+hiện dải xác nhận với ba lựa chọn: *Lưu JSON trước*, *Xoá và soạn bài mới*,
+*Huỷ*. Hàm `startNewLesson()` huỷ lượt gọi AI đang chạy, đưa `lesson` về rỗng,
+dọn `audit`/`selected`/`editing`/`visualDraft`/`presenting`, **xoá cả bản nháp
+trong `localStorage`** rồi trả giao diện về màn hình khởi đầu. Thông tin giáo
+viên, trường và các tuỳ chọn ở thanh bên được giữ nguyên để soạn bài tiếp theo
+không phải nhập lại.
+
+Có hỏi lại trước khi xoá vì bản nháp chỉ nằm trong trình duyệt — xoá nhầm là mất
+công soạn cả buổi, không có cách khôi phục.
+
+| Tệp | Trạng thái | Vai trò |
+|---|---|---|
+| `app/page.tsx` | sửa | Thêm trạng thái `confirmNew`, hàm `startNewLesson()`, nút ✚ Bài mới và dải xác nhận |
+| `app/v11.css` | sửa | Style cho nút ✚ Bài mới và dải xác nhận; ẩn dải này khi in |
+
+---
+
+## Phụ lục — bản V11.5: thư viện bài giảng trong trình duyệt
+
+**Vấn đề còn lại sau V11.4.** Nút *Bài mới* đã mở được lối ra, nhưng vẫn phải
+xoá bài cũ mới soạn được bài mới, vì cả phần mềm chỉ có **một** chỗ lưu duy nhất
+(`lessonstudio.v11.draft`). Giáo viên dạy ba khối, mỗi tuần vài bài — cách lưu
+đó không khớp với thực tế công việc.
+
+**Thư viện.** Nay lưu được nhiều bài và chuyển qua lại tuỳ ý:
+
+- Mọi bài vừa tạo, vừa nạp từ JSON hay đang sửa đều **tự vào thư viện** sau 600 ms,
+  không cần bấm lưu.
+- Nút **▤ Thư viện (n)** ở thanh công cụ mở danh sách: tiêu đề, khối lớp, bộ sách,
+  số slide, số hình và thời điểm sửa gần nhất. Mỗi dòng có *Mở*, *Nhân bản*, *Xoá*.
+- Danh sách cũng hiện ở màn hình khởi đầu, nên sau khi bấm *Bài mới* vẫn quay lại
+  bài cũ được.
+- *Nhân bản* để soạn biến thể cho lớp khác mà không động vào bài gốc.
+- *Xoá* phải xác nhận ngay trên dòng đó — xoá là mất hẳn.
+- Mở lại trang thì bài đang làm dở tự mở ra như cũ.
+
+**Chuyển đổi tự động.** `migrateLegacyDraft()` biến bản nháp của V11.0–V11.4 thành
+mục đầu tiên của thư viện rồi xoá khoá cũ. Giáo viên đang soạn dở không mất bài.
+
+**Vì sao tách chỉ mục khỏi nội dung.** `lib.index` chỉ giữ phần mô tả (vài trăm
+byte); nội dung mỗi bài nằm riêng ở `lib.item.<id>` (thường 30–100 KB). Mở trang
+chỉ đọc chỉ mục, và tự lưu chỉ ghi đè đúng bài đang mở thay vì ghi lại cả thư viện
+mỗi 600 ms.
+
+**Ghi nội dung trước, cập nhật chỉ mục sau.** Nếu hết dung lượng giữa chừng thì
+chỉ mục vẫn khớp với thứ thực sự nằm trong bộ nhớ — không sinh ra mục bấm vào thì
+báo "không mở được".
+
+**Giới hạn phải nói rõ với người dùng.** `localStorage` chỉ khoảng 5 MB, thuộc về
+một trình duyệt trên một máy. Xoá dữ liệu duyệt web, dùng cửa sổ ẩn danh hay đổi
+máy là mất. Vì vậy mọi hàm ghi đều trả lỗi tường minh (`QUOTA_HINT`) thay vì thất
+bại im lặng, và bảng thư viện luôn kèm dòng nhắc xuất JSON làm bản lưu thật.
+
+| Tệp | Trạng thái | Vai trò |
+|---|---|---|
+| `lib/library.ts` | **mới** | Chỉ mục + nội dung từng bài, nhân bản, xoá, chuyển đổi bản nháp cũ, xử lý hết dung lượng |
+| `app/page.tsx` | sửa | Trạng thái `library`/`activeId`, tự lưu vào thư viện, `openEntry`/`copyEntry`/`deleteEntry`, bảng `LibraryPanel` |
+| `app/v11.css` | sửa | Style bảng thư viện |
+| `tests.mjs` | sửa | 13 kiểm thử mới cho thư viện (tổng 39, tất cả đạt) |

@@ -1,0 +1,4 @@
+# Mã nguồn V10 gốc chỉ để đối chiếu, không tham gia bản dựng.
+# Nếu để lại, Next.js sẽ kiểm tra kiểu cả tệp cũ và làm hỏng deploy trên Vercel.
+_v10_backup/
+tests.mjs
