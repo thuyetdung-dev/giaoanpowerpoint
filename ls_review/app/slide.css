@@ -1,0 +1,233 @@
+/* app/slide.css — Khung xem trước dạng slide PowerPoint và chế độ trình chiếu (V11.1)
+   Mọi toạ độ bên trong .sl-stage tính theo hệ 1280×720 px (96 px mỗi inch),
+   đúng khổ 16:9 của PowerPoint, rồi được thu phóng bằng transform. */
+
+.sl-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #d3dde5;
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(16, 40, 60, .12);
+}
+.sl-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+}
+.sl-body { position: absolute; inset: 0; overflow: hidden; }
+
+.sl-abs { position: absolute; }
+.sl-center { text-align: center; }
+.sl-right { text-align: right; }
+
+.sl-topbar { position: absolute; left: 0; top: 0; right: 0; }
+.sl-accent { position: absolute; }
+.sl-divider { position: absolute; height: 1px; }
+
+.sl-title {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  line-height: 1.12;
+  overflow: hidden;
+}
+.sl-covertitle { display: flex; align-items: center; font-weight: 700; line-height: 1.12; }
+
+.sl-badge {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+.sl-pageno { position: absolute; text-align: right; font-weight: 700; }
+.sl-footer { position: absolute; }
+
+.sl-panel { position: absolute; border: 1px solid; border-radius: 6px; }
+
+.sl-kicker {
+  position: absolute;
+  font-weight: 700;
+  letter-spacing: .1em;
+  white-space: nowrap;
+}
+
+.sl-bullets { position: absolute; overflow: hidden; line-height: 1.42; }
+.sl-bullets ul { margin: 0; padding-left: 1.05em; }
+.sl-bullets li { margin-bottom: .5em; }
+.sl-bullets p { margin: 0; }
+.sl-bullets .math, .sl-title .math, .sl-covertitle .math { font-size: 1em; }
+
+.sl-visual { position: absolute; display: grid; place-items: center; overflow: hidden; }
+.sl-visual > * { max-width: 100%; max-height: 100%; }
+.sl-visual svg { width: auto; height: auto; max-width: 100%; max-height: 100%; min-width: 0 !important; }
+.sl-visual .data-table-wrap, .sl-visual .quiz-card { width: 100%; max-height: 100%; overflow: hidden; }
+.sl-visual .quiz-question { font-size: 19px; }
+.sl-visual .quiz-option { font-size: 16px; padding: 9px 12px; }
+.sl-visual .formula-block { font-size: 20px; }
+
+/* ---------- Thanh công cụ khung xem trước ---------- */
+.canvas-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.canvas-head .pos {
+  font: 600 13px/1 var(--ff-ui, Arial, sans-serif);
+  color: #5b6b7b;
+  margin-right: auto;
+}
+.canvas-head button {
+  width: auto;
+  margin: 0;
+  padding: 8px 13px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid #c9d6e0;
+  border-radius: 7px;
+  background: #fff;
+  color: #24384c;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.canvas-head button:hover { border-color: #8fa6b8; }
+.canvas-head button.primary { background: #17324d; border-color: #17324d; color: #fff; }
+.canvas-head button.edit { background: #6d28d9; border-color: #6d28d9; color: #fff; }
+.canvas-head button.danger { background: #dc2626; border-color: #dc2626; color: #fff; }
+.canvas-head button.done { background: #0e8a72; border-color: #0e8a72; color: #fff; }
+
+.slide-hint {
+  margin: 10px 0 0;
+  font: 400 12px/1.5 var(--ff-ui, Arial, sans-serif);
+  color: #7a8894;
+}
+
+/* ---------- Bảng sửa nội dung nằm dưới slide ---------- */
+.edit-panel {
+  margin-top: 16px;
+  border: 1px solid #d9e1e7;
+  border-radius: 10px;
+  background: #f8fbfd;
+  padding: 16px 18px;
+}
+.edit-panel > b {
+  display: block;
+  margin-bottom: 12px;
+  font: 700 13px/1 var(--ff-ui, Arial, sans-serif);
+  color: #24384c;
+}
+.visual-strip { display: grid; gap: 10px; margin-top: 16px; }
+.visual-strip > b { font: 700 13px/1 var(--ff-ui, Arial, sans-serif); color: #24384c; }
+.visual-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid #dbe3ea;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+}
+.visual-row span { flex: 1; font-weight: 600; color: #37506a; }
+.visual-row button { width: auto; margin: 0; padding: 6px 11px; font-size: 12px; font-weight: 700; }
+
+/* ---------- Trình chiếu toàn màn hình ---------- */
+.presenter {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  background: #0b1016;
+}
+.presenter-stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 2vmin 2vmin 0;
+}
+.sl-frame-full {
+  width: min(100%, calc((100vh - 92px) * 16 / 9));
+  border: 0;
+  border-radius: 4px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .55);
+}
+.presenter-notes {
+  margin: 0 2vmin;
+  padding: 10px 16px;
+  max-height: 18vh;
+  overflow: auto;
+  background: #16202a;
+  border-left: 4px solid #f2a541;
+  border-radius: 0 8px 8px 0;
+  color: #dbe6ee;
+  font: 400 15px/1.55 Arial, sans-serif;
+}
+.presenter-notes b { display: block; font-size: 12px; letter-spacing: .08em; color: #f2a541; margin-bottom: 5px; }
+.presenter-notes p { margin: 0; white-space: pre-line; }
+.presenter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+}
+.presenter-bar button {
+  width: auto;
+  margin: 0;
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #ffffff1f;
+  color: #fff;
+  font: 700 13px/1 Arial, sans-serif;
+  cursor: pointer;
+}
+.presenter-bar button:hover { background: #ffffff33; }
+.presenter-bar button.ghost { background: transparent; border: 1px solid #ffffff33; font-weight: 400; }
+.presenter-count {
+  color: #cfdae3;
+  font: 600 14px/1 Arial, sans-serif;
+  min-width: 78px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .sl-frame-full { width: 100%; }
+  .presenter-bar { flex-wrap: wrap; }
+}
+
+/* Nút trình chiếu ở thanh trên cùng */
+.export-actions .present {
+  background: #17324d;
+  border-color: #17324d;
+  color: #fff;
+  font-weight: 700;
+}
+.export-actions .present:hover { background: #0f2438; }
+
+/* ---------- Thanh tiêu đề trình biên tập ----------
+   Thêm nút "Trình chiếu" khiến hàng nút dài ra và bóp cột tiêu đề còn vài chục
+   pixel, làm tên bài xuống dòng từng chữ. Cho cột tiêu đề co giãn được và cho
+   hàng nút xuống dòng khi hẹp. */
+.preview-toolbar { flex-wrap: wrap; gap: 12px 18px; align-items: flex-end; }
+.preview-toolbar > div:first-child { flex: 1 1 340px; min-width: 0; }
+.preview-toolbar small { display: block; white-space: nowrap; }
+.preview-toolbar h2 { margin: 5px 0 0; line-height: 1.2; overflow-wrap: anywhere; }
+.preview-toolbar .title-edit { width: 100%; font: 700 22px Georgia, serif; padding: 6px 10px; }
+.export-actions { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 1180px) {
+  .preview-toolbar > div:first-child { flex-basis: 100%; }
+  .export-actions { justify-content: flex-start; }
+}
