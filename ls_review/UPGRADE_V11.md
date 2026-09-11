@@ -116,3 +116,23 @@ hạng, nên không hỏng khi hãng ra bản mới hay khai tử bản cũ.
 **Vì sao dòng `pro` bị xếp cuối:** giá gấp nhiều lần mà chênh lệch chất lượng
 không đáng kể với việc soạn bài giảng. `rankOpenAIModel()` trừ điểm dòng này để
 chế độ "Tự động chọn mô hình" không vô tình đốt tiền của giáo viên.
+
+---
+
+## Phụ lục — bản V11.3
+
+**Chặn "bảng vẽ bằng ký tự |".** AI hay quên là đã có sẵn loại hình bảng, nên kẻ
+bảng biến thiên bằng dấu gạch đứng ngay trong `content`. Chiếu lên màn hình chỉ
+ra một dãy chữ lộn xộn. Nay có hai cảnh báo mới trong `lib/audit.ts`:
+
+- `ASCII_TABLE` — phát hiện từ 2 dòng trở lên có nhiều dấu `|`.
+- `BBT_MISSING_VISUAL` — đề bài nói "có bảng biến thiên" mà slide không có bảng.
+
+`lib/prompt.ts` cũng cấm thẳng việc này và yêu cầu: câu trắc nghiệm dựa trên một
+bảng biến thiên cho sẵn thì slide phải có ĐỒNG THỜI `variation_table` và `quiz`.
+
+**Chia chiều cao theo loại hình.** `visualBoxes()` trước đây chia đều chiều cao
+cho các hình trên cùng một slide. Với cặp *bảng biến thiên + câu hỏi 4 phương án*
+thì phương án D bị cắt mất — học sinh không thấy đáp án cuối. Nay mỗi loại hình
+có trọng số riêng (`HEIGHT_WEIGHT`): quiz 1,55 — bảng xét dấu 0,75 — trục số 0,6…
+Cả khung xem trước lẫn bộ xuất PPTX dùng chung hàm này nên hai bên vẫn khớp nhau.

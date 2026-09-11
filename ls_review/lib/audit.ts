@@ -89,6 +89,28 @@ function auditSection(s: Section, index: number, out: AuditItem[]) {
   if (bullets > MAX_BULLETS) {
     out.push({ level: "tip", code: "TOO_MANY_BULLETS", section: index, message: `Slide có ${bullets} ý; nên giữ tối đa ${MAX_BULLETS} ý để học sinh kịp theo dõi.` });
   }
+  // Bảng kẻ bằng ký tự "|" — AI hay làm khi không nhớ ra là có sẵn loại hình bảng.
+  // Trên slide, thứ này trông như một dòng chữ lộn xộn, không ra bảng.
+  const pipeLines = (s.content || "").split(/\n/).filter((line) => (line.match(/\|/g) || []).length >= 2);
+  if (pipeLines.length >= 2) {
+    out.push({
+      level: "warning", code: "ASCII_TABLE", section: index,
+      message: `Slide đang kẻ bảng bằng ký tự "|" trong phần chữ (${pipeLines.length} dòng). Chiếu lên màn hình sẽ thành một dãy chữ lộn xộn, không ra bảng.`,
+      fix: 'Xoá mấy dòng đó khỏi "content" và thêm một hình thật: variation_table (bảng biến thiên), sign_chart (bảng xét dấu) hoặc data_table (bảng số liệu).',
+    });
+  }
+
+  // Đề bài nhắc "có bảng biến thiên như sau" nhưng slide không hề có bảng
+  const mentionsTable = /b[aả]ng bi[eế]n thi[eê]n (nh[uư] sau|sau đây|b[eê]n)|c[oó] b[aả]ng bi[eế]n thi[eê]n/i.test(s.content || "");
+  const hasTable = (s.visuals || []).some((v) => v.type === "variation_table");
+  if (mentionsTable && !hasTable) {
+    out.push({
+      level: "warning", code: "BBT_MISSING_VISUAL", section: index,
+      message: "Đề bài nói \u201ccó bảng biến thiên\u201d nhưng slide không có bảng nào để học sinh nhìn.",
+      fix: 'Thêm một hình "variation_table" vào slide này; học sinh cần thấy bảng mới trả lời được.',
+    });
+  }
+
   if ((s.visuals?.length ?? 0) > 2) {
     out.push({
       level: "tip", code: "VISUAL_CROWDED", section: index,
@@ -326,6 +348,42 @@ function auditRegion(v: RegionVisual, section: number, visual: number, out: Audi
 }
 
 /* ------------------------------------------------------------------ */
+/* Chuẩn hoá mốc x                                                     */
+/*                                                                     */
+/* Lỗi phổ biến nhất của AI: viết x = [-1, 1] rồi cho 3 ô dấu. AI đang  */
+/* nghĩ theo kiểu "hai nghiệm chia trục số thành ba khoảng" — đúng về   */
+/* toán, nhưng lược đồ đòi hỏi liệt kê ĐỦ CẢ HAI ĐẦU MÚT ±∞ trong x.    */
+/* Khi số ô dấu cho biết chắc chắn còn thiếu đúng hai đầu mút, phần mềm */
+/* tự thêm vào — đây là suy luận xác định, không phải đoán mò.          */
+/* ------------------------------------------------------------------ */
+
+/** Đưa mốc về chuỗi LaTeX chuẩn: số -> chuỗi, "inf"/"-inf" -> \infty. */
+function normalizeBound(raw: unknown): string {
+  if (typeof raw === "number") return String(raw);
+  const t = String(raw ?? "").trim();
+  if (/^[+]?(inf|infty|infinity|∞)$/i.test(t)) return "+\\infty";
+  if (/^-(inf|infty|infinity|∞)$/i.test(t)) return "-\\infty";
+  return t;
+}
+
+function hasMinusInfinity(t: string) { return /-\s*(\\infty|∞)/.test(t); }
+function hasPlusInfinity(t: string) { return /(^|[^-])\s*(\\infty|∞)/.test(t); }
+
+/**
+ * Thêm hai đầu mút ±∞ khi số ô dấu chứng tỏ chúng bị thiếu.
+ * Trả về null nếu không suy ra được chắc chắn (khi đó KHÔNG đụng vào dữ liệu).
+ */
+function completeBounds(x: string[], signCount: number): string[] | null {
+  if (!x.length || signCount <= 0) return null;
+  const already = hasMinusInfinity(x[0]) || hasPlusInfinity(x[x.length - 1]);
+  if (already) return null;
+  const n = x.length + 2;
+  // Hợp lệ nếu sau khi thêm, số ô khớp một trong hai dạng được phép
+  if (signCount === n - 1 || signCount === 2 * n - 3) return ["-\\infty", ...x, "+\\infty"];
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
 /* Kiểm định sư phạm (CT GDPT 2018)                                    */
 /* ------------------------------------------------------------------ */
 
@@ -382,12 +440,26 @@ export function repairLesson(input: Lesson): RepairReport {
     const visuals = (s.visuals || []).map((v, vi) => {
       const where = `Slide ${si + 1} · hình ${vi + 1}`;
       if (v.type === "variation_table") {
+        // Chuẩn hoá mốc trước, rồi bù đầu mút ±∞ nếu chắc chắn thiếu
+        v.x = (v.x ?? []).map(normalizeBound);
+        const completed = completeBounds(v.x, v.derivative?.length ?? 0)
+          ?? (v.expression ? completeBounds(v.x, (v.x.length + 2) - 1) : null);
+        if (completed) {
+          v.x = completed;
+          changes.push(`${where}: bổ sung hai đầu mút −∞ và +∞ còn thiếu ở hàng x.`);
+        }
         const n = Math.max(2, v.x?.length || 0);
         v.x = Array.from({ length: n }, (_, i) => v.x?.[i] ?? (i === 0 ? "-\\infty" : i === n - 1 ? "+\\infty" : "?"));
         // KHÔNG bịa giá trị: thiếu thì để "?" và báo ra ngoài
         if ((v.values?.length ?? 0) !== n) {
-          v.values = Array.from({ length: n }, (_, i) => v.values?.[i] ?? "?");
-          unresolved.push(`${where}: thiếu giá trị y ở một số mốc — cần nhập tay hoặc tạo lại bằng AI.`);
+          const computed = v.expression ? computeValues(v.expression, v.x) : null;
+          if (computed) {
+            v.values = computed;
+            changes.push(`${where}: tính lại hàng giá trị y từ biểu thức ${v.expression}.`);
+          } else {
+            v.values = Array.from({ length: n }, (_, i) => v.values?.[i] ?? "?");
+            unresolved.push(`${where}: thiếu giá trị y ở một số mốc — cần nhập tay hoặc bổ sung trường "expression".`);
+          }
         }
         const expected = 2 * n - 3;
         if ((v.derivative?.length ?? 0) !== expected) {
@@ -404,10 +476,16 @@ export function repairLesson(input: Lesson): RepairReport {
         v.discontinuities = (v.discontinuities || []).filter((d) => d.index > 0 && d.index < n - 1);
       }
       if (v.type === "sign_chart") {
+        v.x = (v.x ?? []).map(normalizeBound);
+        const completed = completeBounds(v.x, v.signs?.length ?? 0);
+        if (completed) {
+          v.x = completed;
+          changes.push(`${where}: bổ sung hai đầu mút −∞ và +∞ còn thiếu ở hàng x.`);
+        }
         const n = Math.max(2, v.x?.length || 0);
         const expected = 2 * n - 3;
         if ((v.signs?.length ?? 0) !== expected && (v.signs?.length ?? 0) !== n - 1) {
-          unresolved.push(`${where}: bảng xét dấu thiếu ô, cần ${expected} ô.`);
+          unresolved.push(`${where}: bảng xét dấu có ${v.signs?.length ?? 0} ô, cần ${expected} ô (dấu xen kẽ nghiệm) hoặc ${n - 1} ô (chỉ dấu trên khoảng).`);
         }
       }
       if (v.type === "graph") {
@@ -427,6 +505,31 @@ export function repairLesson(input: Lesson): RepairReport {
   });
 
   return { lesson, changes, unresolved };
+}
+
+/**
+ * Tính hàng giá trị y từ biểu thức. Mốc hữu hạn thì thay số trực tiếp; mốc ±∞
+ * thì xét giá trị ở rất xa để biết hàm tiến tới +∞ hay −∞.
+ */
+function computeValues(expression: string, xs: string[]): string[] | null {
+  const c = compileExpression(expression);
+  if (!c.ok) return null;
+  const out: string[] = [];
+  for (const raw of xs) {
+    const x = parseBound(raw);
+    if (x === Number.POSITIVE_INFINITY || x === Number.NEGATIVE_INFINITY) {
+      const far = x > 0 ? 1e6 : -1e6;
+      const y = c.eval(far);
+      if (!Number.isFinite(y)) return null;
+      out.push(y > 0 ? "+\\infty" : "-\\infty");
+      continue;
+    }
+    if (!Number.isFinite(x)) return null;
+    const y = c.eval(x);
+    if (!Number.isFinite(y)) return null;
+    out.push(String(Math.round(y * 1000) / 1000));
+  }
+  return out;
 }
 
 /** Suy ra hàng dấu y′ từ biểu thức bằng đạo hàm số học (chỉ dùng khi có expression). */

@@ -221,7 +221,7 @@ export function SlideBoard({
   /* ----- slide nội dung ----- */
   const { section, part, visuals } = spec;
   const heading = section.heading + (part ? " (tiếp)" : "");
-  const boxes = visualBoxes(part, visuals.length);
+  const boxes = visualBoxes(part, visuals.length, visuals.map((v) => v.visual.type));
 
   return (
     <div className="sl-body" style={{ background: `#${t.bg}` }}>
