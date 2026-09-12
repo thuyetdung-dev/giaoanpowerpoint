@@ -85,7 +85,7 @@ export const VISUAL_GUIDE: Record<string, VisualGuide> = {
     intro: "Bảng xét dấu một biểu thức, hoặc nhiều dòng tử – mẫu – thương như SGK.",
     fields: [
       { name: "x", required: true, desc: "Các mốc trên hàng x, kể cả -\\infty và +\\infty." },
-      { name: "signs", required: true, desc: "Dấu của biểu thức, xen kẽ dấu và nghiệm: 2n−3 ô với n mốc x. Bỏ qua nếu dùng rows." },
+      { name: "signs", required: true, desc: "Dấu của biểu thức, xen kẽ dấu và giá trị tại mốc: 2n−3 ô với n mốc x. Dùng 0 chỉ khi chính hàng đó bằng 0; dùng || nếu không xác định; dùng dấu +/− nếu hàng đó khác 0 tại mốc. Bỏ qua nếu dùng rows." },
       { name: "label", required: false, desc: "Tên biểu thức hiện ở cột trái, ví dụ \"f(x)\"." },
       { name: "rows", required: false, desc: "Nhiều dòng xét dấu, mỗi dòng có label và signs. Dùng thay cho signs." },
     ],
@@ -93,11 +93,15 @@ export const VISUAL_GUIDE: Record<string, VisualGuide> = {
       type: "sign_chart",
       x: ["-\\infty", "-2", "1", "+\\infty"],
       rows: [
-        { label: "x - 1", signs: ["-", "0", "-", "0", "+"] },
-        { label: "x + 2", signs: ["-", "0", "+", "0", "+"] },
+        { label: "x - 1", signs: ["-", "-", "-", "0", "+"] },
+        { label: "x + 2", signs: ["-", "0", "+", "+", "+"] },
         { label: "f(x)", signs: ["+", "0", "-", "0", "+"] },
       ],
     },
+    notes: [
+      "Ở một mốc, không được ghi 0 cho tất cả các hàng. Chỉ hàng có nhân tử bằng 0 mới ghi 0.",
+      "Nên dùng đủ 2n−3 phần tử trong signs để phần mềm không phải suy đoán giá trị tại mốc.",
+    ],
   },
 
   graph: {
@@ -124,6 +128,8 @@ export const VISUAL_GUIDE: Record<string, VisualGuide> = {
     notes: [
       "Dấu nhân nên viết rõ: 2*x an toàn hơn 2x, và 50*x/(100-x) an toàn hơn 50x/(100-x).",
       "Hàm chính ở expression LUÔN được vẽ; expressions chỉ là các đường vẽ thêm.",
+      "Dùng kind: \"center\" cho tâm đối xứng không thuộc đồ thị; phần mềm sẽ vẽ điểm rỗng.",
+      "Tiệm cận đứng được tự dò từ expression; vẫn nên khai báo trong asymptotes để dữ liệu bài giảng tường minh.",
     ],
   },
 

@@ -31,6 +31,7 @@ import type {
 } from "@/lib/types";
 import { ExtraVisual, isExtraVisual } from "./MathVisualsExtra";
 import { computeLevels, isMinusInf, isPlusInf, plainMath, shortLabel, tableCaption } from "@/lib/bbt";
+import { solveVariationTable, tableMatches } from "@/lib/bbtsolve";
 import { GRAPH_H, GRAPH_W, SC_HEAD, SC_ROW_H, SC_W, VT_CAPTION_H, VT_H, VT_W, svgFontPx } from "@/lib/slides";
 
 /* ------------------------------------------------------------------ */
@@ -75,7 +76,19 @@ function VariationTable({ v }: { v: VariationVisual }) {
    * giáo khoa. Bộ sinh nội dung hay nhét cả biểu thức vào cột trái; ở cỡ chữ mới
    * nó tràn qua vạch dọc và đè lên cột giá trị (xem bài giảng Bài 4, slide 07).
    */
-  const caption = tableCaption(v);
+  /*
+   * Nếu JSON có expression, ưu tiên dữ liệu được máy thẩm định. V11.9 chỉ sửa
+   * bảng sau khi giáo viên bấm "Tự sửa", nên bản xem trước và PowerPoint vẫn
+   * có thể xuất một bảng sai. Bản này dựng lại ngay khi bảng thiếu hoặc lệch;
+   * JSON không có expression vẫn được giữ nguyên để hỗ trợ bảng tham số.
+   */
+  const solved = v.expression ? solveVariationTable(v.expression) : null;
+  const useSolved = !!solved?.ok && (!v.x?.length || !tableMatches(v, solved));
+  const data = useSolved
+    ? ({ ...v, x: solved!.x, derivative: solved!.derivative,
+         values: solved!.values, discontinuities: solved!.discontinuities } as VariationVisual)
+    : v;
+  const caption = tableCaption(data);
   const capH = caption ? VT_CAPTION_H : 0;
   const H = VT_H + capH;
   const fs = svgFontPx(W, H);
@@ -88,14 +101,14 @@ function VariationTable({ v }: { v: VariationVisual }) {
   const yTop = capH + 176;
   const yBottom = H - 46;
 
-  const n = Math.max(2, v.x.length);
+  const n = Math.max(2, data.x.length);
   // Chừa lề sau vạch dọc: V10 đặt mốc đầu tiên ngay trên vạch nên "-∞" bị vạch cắt đôi.
   const padIn = 44;
   const step = (W - L - padIn - 30) / (n - 1);
   const xs = Array.from({ length: n }, (_, i) => L + padIn + i * step);
-  const dis = new Map((v.discontinuities ?? []).map((d) => [d.index, d]));
+  const dis = new Map((data.discontinuities ?? []).map((d) => [d.index, d]));
 
-  const { left, right } = computeLevels(v);
+  const { left, right } = computeLevels(data);
   // computeLevels đã trả về bậc chuẩn hoá 0..1 cho TỪNG NHÁNH (xem lib/bbt.ts),
   // nên ở đây chỉ việc trải thẳng lên chiều cao ô.
   const yOfLevel = (lv: number) => yBottom - lv * (yBottom - yTop);
@@ -105,11 +118,11 @@ function VariationTable({ v }: { v: VariationVisual }) {
     return yOfLevel(side === "l" ? left[i] : right[i]);
   };
 
-  const der = v.derivative ?? [];
+  const der = data.derivative ?? [];
   const full = der.length >= 2 * n - 3;
   const intervalSign = (i: number) => (full ? der[i * 2] : der[i]) ?? "";
   const nodeSign = (i: number) => (full ? der[i * 2 + 1] : "0") ?? "0";
-  const vals = Array.from({ length: n }, (_, i) => v.values?.[i] ?? "");
+  const vals = Array.from({ length: n }, (_, i) => data.values?.[i] ?? "");
 
   /**
    * MŨI TÊN PHẢI DỪNG TRƯỚC CHỮ (V11.8).
@@ -129,7 +142,7 @@ function VariationTable({ v }: { v: VariationVisual }) {
 
   return (
     <svg className="variation-svg" viewBox={`0 0 ${W} ${H}`} role="img"
-         aria-label={`Bảng biến thiên${v.label ? " của " + v.label : ""}`}>
+         aria-label={`Bảng biến thiên${data.label ? " của " + data.label : ""}`}>
       <defs>
         <marker id={arrowId} markerWidth="11" markerHeight="11" refX="10" refY="5.5" orient="auto">
           <path d="M0,0 L11,5.5 L0,11 Z" fill="#263746" />
@@ -151,7 +164,7 @@ function VariationTable({ v }: { v: VariationVisual }) {
 
       {/* hàng x */}
       {xs.map((x, i) => (
-        <text key={`x${i}`} x={x} y={xRow - 18} className="bbt-text" style={{ fontSize: fs }}>{plainMath(v.x[i] ?? "")}</text>
+        <text key={`x${i}`} x={x} y={xRow - 18} className="bbt-text" style={{ fontSize: fs }}>{plainMath(data.x[i] ?? "")}</text>
       ))}
 
       {/* dấu trên từng khoảng */}
@@ -170,6 +183,8 @@ function VariationTable({ v }: { v: VariationVisual }) {
 
       {/* mũi tên biến thiên — chiều lấy từ dấu y', không lấy từ độ lớn giá trị */}
       {Array.from({ length: n - 1 }, (_, i) => {
+        const sign = plainMath(intervalSign(i));
+        if (sign !== "+" && sign !== "-") return null;
         const y1 = yOfNode(i, "r", vals[i]);
         const y2 = yOfNode(i + 1, "l", vals[i + 1]);
         const x1 = xs[i] + inset(i, "r");
@@ -248,6 +263,12 @@ function SignChart({ v }: { v: SignVisual }) {
       {xs.map((x, i) => (
         <text key={i} x={x} y={SC_HEAD - 20} className="bbt-text" style={{ fontSize: fs }}>{plainMath(v.x[i] ?? "")}</text>
       ))}
+      {/* Các cột mốc giúp mắt theo đúng một nghiệm từ hàng x xuống các hàng.
+          Chỉ kẻ rất nhạt; mốc không xác định sẽ được hàng dữ liệu ghi bằng ‖. */}
+      {xs.slice(1, -1).map((x, i) => (
+        <line key={`guide${i}`} x1={x} x2={x} y1={SC_HEAD} y2={H - 1}
+              stroke="#D9E2EA" strokeWidth="1" />
+      ))}
       {rows.map((row, r) => {
         const yBase = SC_HEAD + (r + 1) * rowH;
         const signs = row.signs ?? [];
@@ -263,7 +284,9 @@ function SignChart({ v }: { v: SignVisual }) {
             ))}
             {Array.from({ length: Math.max(0, n - 2) }, (_, i) => (
               <text key={`z${i}`} x={xs[i + 1]} y={yBase - 16} className="bbt-text" style={{ fontSize: fs }}>
-                {plainMath((full ? signs[i * 2 + 1] : "0") ?? "0")}
+                {/* Không được tự đoán mọi mốc là nghiệm. Với bảng nhiều hàng,
+                    một mốc có thể là nghiệm của hàng khác hoặc điểm loại. */}
+                {plainMath((full ? signs[i * 2 + 1] : "") ?? "")}
               </text>
             ))}
           </g>
@@ -335,6 +358,7 @@ function Graph({ v }: { v: GraphVisual }) {
   const W = GRAPH_W;
   const H = GRAPH_H;
   const fs = svgFontPx(W, H);
+  // Lề trên dành riêng cho chú giải; không đặt công thức đè lên vùng đồ thị.
   const p = 84;
   const xMin = v.xMin, xMax = v.xMax, yMin = v.yMin, yMax = v.yMax;
   const sx = (x: number) => p + ((x - xMin) * (W - 2 * p)) / (xMax - xMin);
@@ -372,6 +396,16 @@ function Graph({ v }: { v: GraphVisual }) {
     color: c.color || CURVE_COLORS[i % CURVE_COLORS.length],
     ...buildPath(c.expression, xMin, xMax, yMin, yMax, sx, sy),
   }));
+
+  // Tiệm cận đứng có thể suy ra chắc chắn từ biểu thức. JSON vẫn có quyền
+  // khai báo thêm tiệm cận ngang/xiên; các đường trùng nhau được gộp lại.
+  const declaredAsymptotes = v.asymptotes ?? [];
+  const autoVertical = v.expression
+    ? detectPoles(v.expression, xMin, xMax, 1800)
+        .filter((value) => !declaredAsymptotes.some((a) => a.kind === "vertical" && a.value !== undefined && Math.abs(a.value - value) < 1e-4))
+        .map((value) => ({ kind: "vertical" as const, value }))
+    : [];
+  const asymptotes = [...declaredAsymptotes, ...autoVertical];
 
   const errors = rendered.filter((r) => r.error);
   const stepX = niceStep(xMax - xMin);
@@ -473,11 +507,11 @@ function Graph({ v }: { v: GraphVisual }) {
       anchor = vuaBenPhai ? "start" : "end";
       tx = vuaBenPhai ? px + 12 : px - 12;
     }
-    const x0 = anchor === "middle" ? tx - w / 2 : anchor === "start" ? tx : tx - w;
+    let x0 = anchor === "middle" ? tx - w / 2 : anchor === "start" ? tx : tx - w;
     // Điểm sát trục Ox: nhãn ghi xuống dưới rơi đúng hàng số của trục hoành.
     const chamTrucNgang = Math.abs(py - axisYpx) < fs * 1.2;
     const buoc1 = below ? fs * (chamTrucNgang ? 2.35 : 1.2) : fs * 0.55;
-    return { label, below, px, py, tx, ty: py + (below ? buoc1 : -buoc1), x0, x1: x0 + w,
+    return { label, below, px, py, tx, ty: py + (below ? buoc1 : -buoc1), x0, x1: x0 + w, w,
              anchor, kind: q.kind, buoc1, leader: false };
   });
   /**
@@ -505,11 +539,21 @@ function Graph({ v }: { v: GraphVisual }) {
       });
     };
     const uu = q.below ? 1 : -1;
-    const thu: number[] = [];
+    const thu: { tx: number; ty: number; anchor: "middle" | "start" | "end" }[] = [];
+    // Thử lên/xuống trước, sau đó mới đặt sang trái/phải. Đây là phần V11.9
+    // còn thiếu nên nhãn I, CĐ, CT có thể xếp thành một cột và đè lên đường.
     for (const chieu of [uu, -uu])
       for (let k = 0; k < 4; k++)
-        thu.push(q.py + chieu * ((chieu === uu ? q.buoc1 : fs * 1.2) + k * fs * 1.25));
-    q.ty = thu.find((ty) => tronKhung(ty) && vuong(ty)) ?? Math.min(Math.max(thu[0], fs * 0.9), H - 8);
+        thu.push({ tx: q.tx, ty: q.py + chieu * ((chieu === uu ? q.buoc1 : fs * 1.2) + k * fs * 1.25), anchor: q.anchor });
+    thu.push({ tx: q.px + 16, ty: q.py - 8, anchor: "start" });
+    thu.push({ tx: q.px - 16, ty: q.py - 8, anchor: "end" });
+    const dat = thu.find((c) => {
+      const x0 = c.anchor === "middle" ? c.tx - q.w / 2 : c.anchor === "start" ? c.tx : c.tx - q.w;
+      q.x0 = x0; q.x1 = x0 + q.w;
+      return x0 >= 6 && x0 + q.w <= W - 6 && tronKhung(c.ty) && vuong(c.ty);
+    });
+    if (dat) { q.tx = dat.tx; q.ty = dat.ty; q.anchor = dat.anchor; }
+    else q.ty = Math.min(Math.max(thu[0].ty, fs * 0.9), H - 8);
     // Nhãn đã rời xa chấm thì kẻ nét mảnh nối lại cho biết của điểm nào.
     if (Math.abs(q.ty - q.py) > fs * 1.6 || Math.abs((q.x0 + q.x1) / 2 - q.px) > fs) q.leader = true;
   });
@@ -560,7 +604,7 @@ function Graph({ v }: { v: GraphVisual }) {
             textAnchor="start" className="axis-name svg-halo" style={{ fontSize: fs + 2 }}>{v.yLabel || "y"}</text>
 
       {/* tiệm cận */}
-      {v.asymptotes?.map((a, i) => {
+      {asymptotes.map((a, i) => {
         if (a.kind === "vertical" && a.value !== undefined)
           return <line key={i} stroke="#D1495B" strokeDasharray="8 6" x1={sx(a.value)} x2={sx(a.value)} y1={p} y2={H - p} />;
         if (a.kind === "horizontal" && a.value !== undefined)
@@ -585,7 +629,9 @@ function Graph({ v }: { v: GraphVisual }) {
       </g>
 
       {/* điểm đặc biệt */}
-      {placedPoints.map((q, i) => (
+      {placedPoints.map((q, i) => {
+        const isCenter = String(q.kind ?? "") === "center";
+        return (
         <g key={i}>
           {/* Nhãn phải lệch khỏi chấm thì kẻ một nét mảnh nối lại, nếu không
               học sinh không biết nhãn nào của điểm nào — đúng lỗi hai nhãn
@@ -595,19 +641,21 @@ function Graph({ v }: { v: GraphVisual }) {
                   x2={Math.min(Math.max(q.px, q.x0), q.x1)} y2={q.ty + (q.below ? -fs * 0.32 : fs * 0.28)}
                   stroke="#8b9aa8" strokeWidth="1.6" strokeDasharray="4 3" />
           )}
-          <circle cx={q.px} cy={q.py} r="8" fill={pointFill[q.kind || "plain"]} stroke="#fff" strokeWidth="2" />
+          <circle cx={q.px} cy={q.py} r="8"
+                  fill={isCenter ? "#fff" : pointFill[q.kind || "plain"]}
+                  stroke={isCenter ? "#263746" : "#fff"} strokeWidth="2" />
           <text x={q.tx} y={q.ty} className="graph-point-label svg-halo"
                 style={{ fontSize: fs, textAnchor: q.anchor }}>
             {q.label}
           </text>
         </g>
-      ))}
+      )})}
 
       {/* chú giải nhiều đồ thị */}
       {rendered.length > 1 && (
-        <g className="graph-legend svg-halo" style={{ fontSize: fs }}>
+        <g className="graph-legend svg-halo" style={{ fontSize: Math.max(18, fs * 0.72) }}>
           {rendered.map((r, i) => (
-            <g key={i} transform={`translate(${p + 10}, ${p + fs + i * (fs + 10)})`}>
+            <g key={i} transform={`translate(${p + i * ((W - 2 * p) / rendered.length)}, ${Math.max(24, p * 0.48)})`}>
               <line x1="0" x2="34" y1="0" y2="0" stroke={r.color} strokeWidth="4"
                     strokeDasharray={r.dashed ? "8 5" : undefined} />
               {/* Không có nhãn thì viết "y = …" bằng ký hiệu Toán, đừng in
