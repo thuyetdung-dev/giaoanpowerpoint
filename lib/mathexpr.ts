@@ -294,28 +294,83 @@ export function numericDerivative(raw: string, x: number, h = 1e-5): number {
  * Dò tiệm cận đứng: tìm các điểm hàm số "nhảy" vô cực trong miền vẽ.
  * Nhờ đó đồ thị 1/(x-1) được vẽ đứt đoạn đúng chỗ thay vì nối liền qua cực.
  */
+/**
+ * Dò các tiệm cận đứng của hàm số trên khoảng [xMin; xMax].
+ *
+ * V11.7 nhận diện bằng `jump > 1e4`: hai điểm lưới liên tiếp phải chênh nhau hơn
+ * mười nghìn. Nhưng lưới quét gần như không bao giờ rơi sát điểm cực đến thế —
+ * với 1/(x-1) quét trên [-40; 40], hai điểm gần x = 1 nhất chỉ cho ±75, chênh
+ * nhau 150. Kết quả: KHÔNG BẮT ĐƯỢC TIỆM CẬN NÀO. Hàm kiểm thử cũ chỉ đạt nhờ
+ * may mắn — quét trên [-3; 3] thì có đúng một điểm lưới rơi trúng x = 1.
+ *
+ * Hậu quả kéo theo: đồ thị hàm phân thức nối liền hai nhánh qua tiệm cận, và
+ * bảng biến thiên không có cột "||".
+ *
+ * V11.8 nhận diện theo BẢN CHẤT của điểm cực:
+ *  - bậc lẻ (1/(x-a)): hàm ĐỔI DẤU và độ lớn hai bên đều rất lớn;
+ *  - bậc chẵn (1/(x-a)²): không đổi dấu nhưng độ lớn vọt lên thành đỉnh nhọn;
+ *  - hoặc đơn giản là hàm không xác định tại điểm lưới.
+ *
+ * Ngưỡng "rất lớn" lấy theo ĐỘ MỊN CỦA LƯỚI chứ không phải một con số cố định:
+ * cách điểm cực một khoảng `step` thì |f| cỡ 1/step, nên lưới càng mịn ngưỡng
+ * càng cao. Nhờ vậy chỗ hàm cắt trục hoành (|f| nhỏ) không bị nhầm là tiệm cận.
+ */
 export function detectPoles(raw: string, xMin: number, xMax: number, samples = 900): number[] {
   const c = compileExpression(raw);
   if (!c.ok) return [];
-  const poles: number[] = [];
   const step = (xMax - xMin) / samples;
-  let prev = c.eval(xMin);
-  for (let i = 1; i <= samples; i++) {
+  const nguong = Math.max(20, 1 / Math.max(step, 1e-9));
+
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let i = 0; i <= samples; i++) {
     const x = xMin + i * step;
-    const y = c.eval(x);
-    const jump = Math.abs(y - prev);
-    if ((!Number.isFinite(y) && Number.isFinite(prev)) || (Number.isFinite(y) && !Number.isFinite(prev)) || jump > 1e4) {
-      // nhị phân thu hẹp vị trí cực
-      let lo = x - step, hi = x;
-      for (let k = 0; k < 40; k++) {
-        const mid = (lo + hi) / 2;
-        const m = c.eval(mid);
-        if (!Number.isFinite(m) || Math.abs(m) > 1e6) hi = mid; else lo = mid;
-      }
-      const p = (lo + hi) / 2;
-      if (!poles.some((q) => Math.abs(q - p) < step * 2)) poles.push(p);
-    }
-    prev = y;
+    xs.push(x);
+    ys.push(c.eval(x));
   }
-  return poles;
+
+  /** Thu hẹp vị trí điểm cực: đi về phía |f| lớn dần. */
+  const tinhChinhXac = (lo: number, hi: number): number => {
+    let a = lo, b = hi;
+    for (let k = 0; k < 60; k++) {
+      const mid = (a + b) / 2;
+      const m = c.eval(mid);
+      if (!Number.isFinite(m) || Math.abs(m) > 1e8) return mid;
+      const fa = Math.abs(c.eval(a));
+      const fb = Math.abs(c.eval(b));
+      if (fa > fb) b = mid; else a = mid;
+    }
+    return (a + b) / 2;
+  };
+
+  const poles: number[] = [];
+  const them = (p: number) => {
+    if (p <= xMin || p >= xMax) return;
+    if (!poles.some((q) => Math.abs(q - p) < Math.max(step * 3, 1e-6))) poles.push(p);
+  };
+
+  for (let i = 1; i <= samples; i++) {
+    const y = ys[i], prev = ys[i - 1];
+    const yHuuHan = Number.isFinite(y), prevHuuHan = Number.isFinite(prev);
+
+    // hàm không xác định ngay tại điểm lưới
+    if (yHuuHan !== prevHuuHan) { them(tinhChinhXac(xs[i - 1], xs[i])); continue; }
+    if (!yHuuHan) continue;
+
+    // điểm cực bậc lẻ: đổi dấu mà hai bên đều rất lớn
+    if ((prev < 0) !== (y < 0) && Math.min(Math.abs(prev), Math.abs(y)) > nguong) {
+      them(tinhChinhXac(xs[i - 1], xs[i]));
+      continue;
+    }
+
+    // Điểm cực bậc chẵn (1/(x-a)²): không đổi dấu, nhưng độ lớn vọt hẳn lên.
+    // So với điểm cách 3 bước chứ không phải điểm liền kề: đỉnh thường nằm vắt
+    // giữa hai điểm lưới nên hai điểm sát nhau đều lớn gần bằng nhau.
+    const xa = 3;
+    if (i - xa >= 0 && i + xa <= samples && Number.isFinite(ys[i + xa]) && Number.isFinite(ys[i - xa])) {
+      const a = Math.abs(ys[i - xa]), m = Math.abs(y), b = Math.abs(ys[i + xa]);
+      if (m > nguong && m > a * 4 && m > b * 4) them(tinhChinhXac(xs[i - 1], xs[i + 1]));
+    }
+  }
+  return poles.sort((a, b) => a - b);
 }

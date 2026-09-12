@@ -1,6 +1,6 @@
 {
   "name": "lessonstudio-next",
-  "version": "11.7.0",
+  "version": "11.8.0",
   "private": true,
   "scripts": {
     "dev": "next dev",

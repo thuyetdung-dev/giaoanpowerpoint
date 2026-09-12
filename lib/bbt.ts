@@ -67,8 +67,28 @@ export function isMinusInf(s: string) {
 
 /**
  * Tính độ cao của từng giá trị y trong bảng biến thiên.
- * Nguyên tắc SGK: y' > 0 -> mũi tên đi lên (bậc +1), y' < 0 -> đi xuống (bậc -1).
- * Trả về mảng bậc cho mép trái/mép phải của mỗi mốc (mốc gián đoạn có 2 bậc).
+ *
+ * Nguyên tắc SGK: y′ > 0 thì mũi tên đi lên, y′ < 0 thì đi xuống. Độ cao suy ra
+ * từ CHUỖI DẤU ĐẠO HÀM chứ không từ độ lớn của giá trị — vì giá trị có thể là
+ * chữ ("m", "3a") hoặc ±∞, không so sánh số học được.
+ *
+ * ------------------------------------------------------------------------
+ * V11.8 — MỖI NHÁNH MỘT THANG RIÊNG
+ * ------------------------------------------------------------------------
+ * V11.7 dùng MỘT thang độ cao chung cho cả bảng. Với hàm có tiệm cận đứng thì
+ * đó là sai về bản chất: hai nhánh hai bên tiệm cận nằm ở hai vùng giá trị khác
+ * hẳn nhau, ép chung một thang thì không còn nghĩa gì.
+ *
+ * Thấy rõ ở y = (x+1)/(x-1): nhánh trái đi từ 1 xuống -∞, nhánh phải đi từ +∞
+ * xuống 1. Cả hai số 1 đó bằng nhau nhưng một cái là ĐỈNH của nhánh trái, một
+ * cái là ĐÁY của nhánh phải. V11.7 đặt cả hai vào giữa ô, nên mũi tên gần như
+ * nằm ngang — xem bài giảng Bài 4, slide 41.
+ *
+ * V11.8 cắt bảng tại các điểm gián đoạn thành từng NHÁNH, mỗi nhánh tính thang
+ * riêng rồi trải hết chiều cao ô. Hàm liên tục chỉ có một nhánh nên không đổi gì.
+ *
+ * Trả về `level` trong khoảng 0..1 (0 = đáy ô, 1 = đỉnh ô) cho mép trái và mép
+ * phải của mỗi mốc.
  */
 export function computeLevels(v: VariationVisual): { left: number[]; right: number[] } {
   const n = Math.max(2, v.x.length);
@@ -77,28 +97,55 @@ export function computeLevels(v: VariationVisual): { left: number[]; right: numb
   const intervalSign = (i: number) => (full ? der[i * 2] : der[i]) ?? "";
   const breaks = new Set((v.discontinuities ?? []).map((d) => d.index));
 
-  const left = new Array(n).fill(0);
-  const right = new Array(n).fill(0);
-  let cur = 0;
-  right[0] = cur;
-  left[0] = cur;
+  // Bậc thô theo chuỗi dấu, RIÊNG cho từng nhánh (bắt đầu lại từ 0 sau mỗi
+  // tiệm cận đứng).
+  const step = new Array(n).fill(0);
+  const rawL = new Array(n).fill(0);
+  const rawR = new Array(n).fill(0);
+  /** Chỉ số nhánh của mép trái và mép phải mỗi mốc. */
+  const branchL = new Array(n).fill(0);
+  const branchR = new Array(n).fill(0);
 
+  let branch = 0;
+  let cur = 0;
+  rawL[0] = rawR[0] = 0;
+  branchL[0] = branchR[0] = 0;
   for (let i = 0; i < n - 1; i++) {
-    const s = plainMath(intervalSign(i));
-    const step = s.includes("+") ? 1 : s.includes("-") ? -1 : 0;
-    cur = right[i] + step;
-    left[i + 1] = cur;
+    const sign = plainMath(intervalSign(i));
+    step[i] = sign.includes("+") ? 1 : sign.includes("-") ? -1 : 0;
+    cur = rawR[i] + step[i];
+    rawL[i + 1] = cur;
+    branchL[i + 1] = branch;
     if (breaks.has(i + 1)) {
-      // qua tiệm cận đứng: nhánh phải bắt đầu lại ở phía đối diện
-      const d = (v.discontinuities ?? []).find((x) => x.index === i + 1);
-      const rightIsUp = d ? isPlusInf(d.rightValue) : false;
-      const rightIsDown = d ? isMinusInf(d.rightValue) : false;
-      right[i + 1] = rightIsUp ? cur + 2 : rightIsDown ? cur - 2 : cur;
-      cur = right[i + 1];
-    } else {
-      right[i + 1] = cur;
+      branch += 1;
+      cur = 0; // nhánh mới bắt đầu lại
+    }
+    rawR[i + 1] = cur;
+    branchR[i + 1] = branch;
+  }
+
+  /**
+   * Chuẩn hoá từng nhánh về 0..1. Nhánh chỉ có một bậc (hàm đơn điệu trên cả
+   * nhánh, không cực trị) vẫn phải trải từ đáy lên đỉnh, nên xét cả hai mép.
+   */
+  const out = { left: new Array(n).fill(0.5), right: new Array(n).fill(0.5) };
+  const nBranch = branch + 1;
+  for (let b = 0; b < nBranch; b++) {
+    const vals: number[] = [];
+    for (let i = 0; i < n; i++) {
+      if (branchL[i] === b) vals.push(rawL[i]);
+      if (branchR[i] === b) vals.push(rawR[i]);
+    }
+    if (!vals.length) continue;
+    const lo = Math.min(...vals);
+    const hi = Math.max(...vals);
+    const span = hi - lo;
+    const norm = (x: number) => (span > 0 ? (x - lo) / span : 0.5);
+    for (let i = 0; i < n; i++) {
+      if (branchL[i] === b) out.left[i] = norm(rawL[i]);
+      if (branchR[i] === b) out.right[i] = norm(rawR[i]);
     }
   }
-  return { left, right };
+  return out;
 }
 

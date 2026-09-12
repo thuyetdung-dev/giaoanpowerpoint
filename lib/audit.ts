@@ -14,6 +14,7 @@
  *   - Phân biệt rõ: lỗi (chặn xuất) / cảnh báo (vẫn xuất được) / gợi ý sư phạm.
  */
 
+import { solveVariationTable, tableMatches } from "./bbtsolve";
 import type {
   Lesson, Visual, VariationVisual, GraphVisual, StatChartVisual,
   BoxPlotVisual, ProbTreeVisual, RegionVisual, Section,
@@ -223,10 +224,50 @@ function auditVariation(v: VariationVisual, section: number, visual: number, out
       if (negative && declared === "+")
         out.push({ level: "error", code: "BBT_SIGN_MISMATCH", ...at, message: `Trên khoảng (${v.x[i]}; ${v.x[i + 1]}) đạo hàm tính được MANG DẤU ÂM nhưng bảng ghi "+".` });
     }
+    /**
+     * MỐC TRONG BẢNG PHẢI LÀ NGHIỆM CỦA y′ (V11.8).
+     *
+     * Vì sao thêm: cho tới V11.7 bộ kiểm định chỉ so DẤU của y′ trên từng
+     * khoảng. Với y = (x²-x+1)/(x+1) thì AI ghi mốc x = 0 và x = 1 — dấu trên
+     * các khoảng vẫn ra đúng nên không có lỗi nào bị báo, trong khi nghiệm
+     * thật là x = -1 ± √3. Đúng cái lỗ này đã để bảng sai đi tới slide.
+     *
+     * Mốc giữa bảng chỉ được là một trong hai thứ: nghiệm của y′ (cực trị),
+     * hoặc điểm gián đoạn (đã khai báo trong discontinuities).
+     */
+    const breaks = new Set((v.discontinuities ?? []).map((d) => d.index));
+    for (let i = 1; i < n - 1; i++) {
+      if (breaks.has(i)) continue;
+      const x = parseBound(v.x[i]);
+      if (!Number.isFinite(x)) continue;
+      const y = evalAt(v.expression!, x);
+      if (!Number.isFinite(y)) {
+        out.push({
+          level: "error", code: "BBT_NODE_UNDEFINED", ...at,
+          message: `Tại x = ${v.x[i]}: hàm số không xác định nhưng mốc này chưa được ghi là điểm gián đoạn.`,
+          fix: "Thêm mốc vào discontinuities, hoặc bỏ mốc nếu ghi nhầm.",
+        });
+        continue;
+      }
+      const d = numericDerivative(v.expression!, x);
+      // Ngưỡng theo độ lớn của hàm: y′ của (x²-x+1)/(x+1) tại x = 0 bằng -1,
+      // còn của x³-3x tại nghiệm thật chỉ lệch cỡ 1e-9 do sai số vi phân số.
+      const nguong = Math.max(1e-3, Math.abs(y) * 1e-3);
+      if (Number.isFinite(d) && Math.abs(d) > nguong)
+        out.push({
+          level: "error", code: "BBT_NODE_NOT_ROOT", ...at,
+          message: `Tại x = ${v.x[i]}: y′ tính được ≈ ${d.toFixed(3)} ≠ 0, nên đây KHÔNG phải điểm cực trị.`,
+          fix: "Giải y′ = 0 để lấy đúng mốc. Bấm “Tự sửa” để phần mềm dựng lại bảng từ biểu thức.",
+        });
+    }
+
     // đối chiếu giá trị tại các mốc hữu hạn
     v.x.forEach((raw, i) => {
       const x = parseBound(raw);
-      const declared = Number(String(v.values?.[i] ?? "").replace(/[^0-9.\-]/g, ""));
+      // Giá trị trong bảng là LaTeX, có thể là "-3 - 2\sqrt{3}" hoặc "\approx 1,73".
+      // Cắt theo [^0-9.-] như trước sẽ biến chuỗi đó thành "-3-23" → NaN, tức là
+      // bỏ qua im lặng đúng những ô đáng kiểm nhất.
+      const declared = parseBound(v.values?.[i] ?? "");
       if (!Number.isFinite(x) || !Number.isFinite(declared)) return;
       const actual = evalAt(v.expression!, x);
       if (Number.isFinite(actual) && Math.abs(actual - declared) > Math.max(0.02, Math.abs(actual) * 0.01))
@@ -236,7 +277,12 @@ function auditVariation(v: VariationVisual, section: number, visual: number, out
 }
 
 function parseBound(raw: string): number {
-  const t = String(raw ?? "").replace(/\\infty|∞/g, "Inf").replace(/\s/g, "");
+  const t = String(raw ?? "")
+    .replace(/\\approx|≈|\\pm|±/g, "")
+    .replace(/(\d),(\d)/g, "$1.$2")   // 1,73 (cách viết Việt Nam) → 1.73
+    .replace(/\\infty|∞/g, "Inf")
+    .replace(/\s/g, "");
+  if (!t || /^[|‖·.\-+]+$/.test(t)) return NaN;   // ô trống hoặc ô "‖" tại điểm gián đoạn
   if (/^[+]?Inf$/.test(t)) return Number.POSITIVE_INFINITY;
   if (/^-Inf$/.test(t)) return Number.NEGATIVE_INFINITY;
   const c = compileExpression(t);
@@ -249,7 +295,28 @@ function auditGraph(v: GraphVisual, section: number, visual: number, out: AuditI
     out.push({ level: "error", code: "GRAPH_RANGE", message: "Miền vẽ không hợp lệ (xMin ≥ xMax hoặc yMin ≥ yMax).", ...at });
     return;
   }
-  const list = v.expressions?.length ? v.expressions.map((e) => e.expression) : [v.expression];
+  /**
+   * ĐƯỜNG CHÍNH BỊ BỎ QUÊN (V11.8).
+   *
+   * Khi AI khai cả `expression` lẫn `expressions`, bản cũ chỉ vẽ `expressions`
+   * — nên đồ thị hàm số được nêu trong đề bài biến mất khỏi hình mà không có
+   * cảnh báo nào. V11.8 đã sửa phần vẽ để gộp cả hai; cảnh báo dưới đây để
+   * thầy biết hình sẽ có thêm một đường so với JSON mà AI mô tả.
+   */
+  const norm = (s: unknown) => String(s ?? "").replace(/\s/g, "");
+  if (v.expression && (v.expressions?.length ?? 0) > 0 && !v.expressions!.some((e) => norm(e?.expression) === norm(v.expression)))
+    out.push({
+      level: "tip", code: "GRAPH_MAIN_CURVE", ...at,
+      message: `Danh sách nhiều đường không chứa hàm chính y = ${v.expression} — phần mềm tự vẽ thêm đường này.`,
+      fix: "Nếu không muốn vẽ hàm chính, bỏ trống expression và chỉ dùng expressions.",
+    });
+
+  // Kiểm đúng những đường SẼ được vẽ: hàm chính cộng danh sách, bỏ bản trùng.
+  const list: string[] = [];
+  [...(v.expression ? [v.expression] : []), ...(v.expressions ?? []).map((e) => e?.expression)].forEach((e) => {
+    if (e && !list.some((k) => norm(k) === norm(e))) list.push(e);
+  });
+  if (!list.length) list.push(v.expression);
   let visible = 0, total = 0;
   list.forEach((expr) => {
     const c = compileExpression(expr);
@@ -440,6 +507,33 @@ export function repairLesson(input: Lesson): RepairReport {
     const visuals = (s.visuals || []).map((v, vi) => {
       const where = `Slide ${si + 1} · hình ${vi + 1}`;
       if (v.type === "variation_table") {
+        /**
+         * V11.8 — DỰNG LẠI TOÀN BỘ BẢNG TỪ BIỂU THỨC.
+         *
+         * Bộ sinh nội dung làm toán không đáng tin. Với y = (x²-x+1)/(x+1) nó đưa
+         * ra mốc x = -3 và x = 1, trong khi nghiệm thật của y′ = 0 là x = -1 ± √3.
+         * Dấu của y′ trên từng khoảng lại đúng, nên phép kiểm định cũ (chỉ đối
+         * chiếu dấu) không hề bắt được — bảng sai vẫn báo "Đạt" và lên slide.
+         *
+         * Nay hễ có trường `expression` thì phần mềm TỰ GIẢI và thay thẳng. Đây
+         * không phải bịa dữ liệu: biểu thức là nguồn sự thật, còn bảng chỉ là
+         * cách trình bày của nó. Bảng KHÔNG có `expression` (ví dụ đề cho sẵn
+         * bảng để hỏi học sinh) thì không đụng tới.
+         */
+        if (v.expression) {
+          const solved = solveVariationTable(v.expression);
+          if (solved.ok && !tableMatches(v, solved)) {
+            v.x = solved.x;
+            v.derivative = solved.derivative;
+            v.values = solved.values;
+            v.discontinuities = solved.discontinuities;
+            changes.push(
+              `${where}: dựng lại bảng biến thiên từ y = ${v.expression} — ${solved.notes.join("; ")}.`,
+            );
+          } else if (!solved.ok) {
+            unresolved.push(`${where}: không tự kiểm được bảng (${solved.error}). Hãy đối chiếu lại bằng tay.`);
+          }
+        }
         // Chuẩn hoá mốc trước, rồi bù đầu mút ±∞ nếu chắc chắn thiếu
         v.x = (v.x ?? []).map(normalizeBound);
         const completed = completeBounds(v.x, v.derivative?.length ?? 0)

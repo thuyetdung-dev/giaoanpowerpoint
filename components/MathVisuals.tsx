@@ -96,11 +96,9 @@ function VariationTable({ v }: { v: VariationVisual }) {
   const dis = new Map((v.discontinuities ?? []).map((d) => [d.index, d]));
 
   const { left, right } = computeLevels(v);
-  const all = [...left, ...right];
-  const lo = Math.min(...all);
-  const hi = Math.max(...all);
-  const span = Math.max(1, hi - lo);
-  const yOfLevel = (lv: number) => yBottom - ((lv - lo) / span) * (yBottom - yTop);
+  // computeLevels đã trả về bậc chuẩn hoá 0..1 cho TỪNG NHÁNH (xem lib/bbt.ts),
+  // nên ở đây chỉ việc trải thẳng lên chiều cao ô.
+  const yOfLevel = (lv: number) => yBottom - lv * (yBottom - yTop);
   const yOfNode = (i: number, side: "l" | "r", raw: string) => {
     if (isPlusInf(raw)) return yTop;
     if (isMinusInf(raw)) return yBottom;
@@ -112,6 +110,22 @@ function VariationTable({ v }: { v: VariationVisual }) {
   const intervalSign = (i: number) => (full ? der[i * 2] : der[i]) ?? "";
   const nodeSign = (i: number) => (full ? der[i * 2 + 1] : "0") ?? "0";
   const vals = Array.from({ length: n }, (_, i) => v.values?.[i] ?? "");
+
+  /**
+   * MŨI TÊN PHẢI DỪNG TRƯỚC CHỮ (V11.8).
+   *
+   * Ở mốc gián đoạn, hai giới hạn một phía được viết sát hai bên vạch đôi. Bản
+   * cũ luôn lùi đúng `fs` nên mũi tên đâm thẳng vào chữ "-∞": đầu mũi tên đè
+   * lên dấu trừ, học sinh đọc thành một ký hiệu lạ. Lùi thêm bề ngang chữ.
+   * 0,56 là bề ngang trung bình một ký tự Times New Roman so với cỡ chữ.
+   */
+  const GAP = Math.round(6 + fs * 0.25);
+  const inset = (i: number, side: "l" | "r") => {
+    const d = dis.get(i);
+    if (!d) return fs;
+    const raw = side === "l" ? d.leftValue : d.rightValue;
+    return GAP + Math.round(plainMath(raw).length * fs * 0.56 + fs * 0.45);
+  };
 
   return (
     <svg className="variation-svg" viewBox={`0 0 ${W} ${H}`} role="img"
@@ -158,8 +172,8 @@ function VariationTable({ v }: { v: VariationVisual }) {
       {Array.from({ length: n - 1 }, (_, i) => {
         const y1 = yOfNode(i, "r", vals[i]);
         const y2 = yOfNode(i + 1, "l", vals[i + 1]);
-        const x1 = xs[i] + fs;
-        const x2 = xs[i + 1] - fs;
+        const x1 = xs[i] + inset(i, "r");
+        const x2 = xs[i + 1] - inset(i + 1, "l");
         if (x2 <= x1) return null;
         return (
           <line key={`a${i}`} x1={x1} y1={y1 + (y2 > y1 ? 14 : -14)} x2={x2} y2={y2 + (y2 > y1 ? -14 : 14)}
@@ -175,10 +189,16 @@ function VariationTable({ v }: { v: VariationVisual }) {
             <g key={`v${i}`}>
               <line x1={xs[i] - 4} x2={xs[i] - 4} y1={xRow} y2={H - 1} stroke="#263746" />
               <line x1={xs[i] + 4} x2={xs[i] + 4} y1={xRow} y2={H - 1} stroke="#263746" />
-              <text x={xs[i] - 16} y={yOfNode(i, "l", d.leftValue)} textAnchor="end" className="bbt-value" style={{ fontSize: fs }}>
+              {/* textAnchor phải đặt trong style, KHÔNG đặt làm thuộc tính:
+                  .bbt-value trong app/bbt.css đã khai text-anchor:middle, mà CSS
+                  thắng thuộc tính trình bày của SVG. Bản V11.7 đặt ở thuộc tính
+                  nên hai giới hạn một phía đều bị căn giữa và cưỡi lên vạch đôi. */}
+              <text x={xs[i] - GAP} y={yOfNode(i, "l", d.leftValue)} className="bbt-value"
+                    style={{ fontSize: fs, textAnchor: "end" }}>
                 {plainMath(d.leftValue)}
               </text>
-              <text x={xs[i] + 16} y={yOfNode(i, "r", d.rightValue)} textAnchor="start" className="bbt-value" style={{ fontSize: fs }}>
+              <text x={xs[i] + GAP} y={yOfNode(i, "r", d.rightValue)} className="bbt-value"
+                    style={{ fontSize: fs, textAnchor: "start" }}>
                 {plainMath(d.rightValue)}
               </text>
             </g>
@@ -320,9 +340,32 @@ function Graph({ v }: { v: GraphVisual }) {
   const sx = (x: number) => p + ((x - xMin) * (W - 2 * p)) / (xMax - xMin);
   const sy = (y: number) => H - p - ((y - yMin) * (H - 2 * p)) / (yMax - yMin);
 
-  const curves = v.expressions?.length
-    ? v.expressions
-    : [{ expression: v.expression, label: undefined as string | undefined, color: undefined as string | undefined, dashed: false }];
+  /**
+   * V11.6 viết `v.expressions?.length ? v.expressions : [v.expression]` — tức là
+   * HỄ CÓ mảng `expressions` thì trường `expression` bị BỎ QUA HOÀN TOÀN.
+   *
+   * Bộ sinh nội dung hay điền tiệm cận xiên vào `expressions` để vẽ nét đứt kèm
+   * theo. Hậu quả: hàm số chính biến mất khỏi slide, học sinh chỉ còn thấy đúng
+   * một đường thẳng chéo — xem bài giảng Bài 4, slide 52 và 57.
+   *
+   * Nay `expression` LUÔN được vẽ, `expressions` chỉ là các đường vẽ THÊM.
+   */
+  const goc = (s: unknown) => String(s ?? "").replace(/\s/g, "");
+  const extra = (v.expressions ?? []).filter((e) => e?.expression && goc(e.expression) !== goc(v.expression));
+  // Nếu hàm chính CŨNG có trong `expressions` thì lấy luôn nhãn/màu/nét đứt của
+  // nó, đừng vẽ lại bằng nhãn rỗng — bản đầu V11.8 làm mất chú giải "y = 2ˣ".
+  const cungTen = (v.expressions ?? []).find((e) => goc(e?.expression) === goc(v.expression));
+  const curves = [
+    ...(v.expression
+      ? [{
+          expression: v.expression,
+          label: cungTen?.label as string | undefined,
+          color: cungTen?.color as string | undefined,
+          dashed: !!cungTen?.dashed,
+        }]
+      : []),
+    ...extra,
+  ];
 
   const rendered = curves.map((c, i) => ({
     ...c,
@@ -379,6 +422,97 @@ function Graph({ v }: { v: GraphVisual }) {
   const pointFill: Record<string, string> = {
     max: "#B91C1C", min: "#1D4ED8", inflection: "#7C3AED", root: "#0F766E", plain: "#EF8354",
   };
+
+  /**
+   * ĐẶT NHÃN ĐIỂM ĐẶC BIỆT — tính trước cho CẢ BỘ, không tính rời từng điểm.
+   *
+   * Bản V11.7 xếp từng nhãn độc lập nên với hàm y = (x²+2x-2)/(x-1): nhãn
+   * "CĐ(0; 2)" bị đẩy sang phải vì điểm nằm trên trục Oy, rơi đúng chỗ nhãn
+   * "CT(2; 6)" — hai nhãn dính vào nhau thành một khối chữ không đọc được.
+   * Muốn tránh thì phải biết vị trí các nhãn khác, tức là phải xếp một lượt.
+   *
+   * Quy tắc: cực tiểu ghi xuống dưới, còn lại ghi lên trên (phía luôn trống);
+   * nhãn nào vẫn chạm nhãn đã xếp thì đẩy thêm từng dòng ra xa chấm.
+   */
+  const axisYpx = yMin <= 0 && yMax >= 0 ? sy(0) : H - p;
+  const axisXpx = xMin <= 0 && xMax >= 0 ? sx(0) : p;
+
+  /**
+   * Chữ ĐÃ CÓ trên hình, coi như chỗ đã chiếm: dãy số trên hai trục và tên
+   * trục. Nhãn điểm phải tránh, nếu không nó đè lên số "2" của trục hoành hoặc
+   * trèo lên chữ "y" ở đầu trục tung — hai lỗi đúng như ảnh thầy gửi.
+   */
+  const vatCan: { x0: number; x1: number; y: number }[] = [];
+  const beRong = (s: unknown, co = fs) => String(s).length * co * 0.54;
+  tickX.forEach((t) => {
+    const w = beRong(t);
+    vatCan.push({ x0: sx(t) - w / 2, x1: sx(t) + w / 2, y: axisYpx + fs + 6 });
+  });
+  tickY.forEach((t) => {
+    vatCan.push({ x0: axisXpx - 12 - beRong(t), x1: axisXpx - 12, y: sy(t) + fs / 3 });
+  });
+  vatCan.push({ x0: W - 8 - beRong(v.xLabel || "x", fs + 2), x1: W - 8, y: axisYpx - 14 });
+  const xTenTrucY = Math.min(axisXpx + 14, W - 8);
+  vatCan.push({ x0: xTenTrucY, x1: xTenTrucY + beRong(v.yLabel || "y", fs + 2), y: Math.max(fs + 4, p - 14) });
+
+  const placedPoints = (v.points ?? []).map((q) => {
+    const label = q.label || `(${q.x}; ${q.y})`;
+    const below = q.kind === "min";
+    const w = label.length * fs * 0.54;
+    const px = sx(q.x), py = sy(q.y);
+    /**
+     * Điểm nằm trên trục Oy: nhãn canh giữa sẽ trùm lên dãy số của trục tung
+     * (dãy số đó viết bên TRÁI trục). Khi ấy viết nhãn bắt đầu ngay cạnh chấm
+     * — vẫn dính liền với chấm, mà chừa nguyên dãy số. Bản V11.7 đẩy nhãn đi
+     * nửa bề ngang nên nhãn rời hẳn khỏi chấm, nhìn tưởng của điểm khác.
+     */
+    let anchor: "middle" | "start" | "end" = "middle";
+    let tx = Math.min(Math.max(px, p + w / 2), W - p - w / 2);
+    if (Math.abs(px - axisXpx) < w / 2 + 12) {
+      const vuaBenPhai = px + 12 + w < W - p;
+      anchor = vuaBenPhai ? "start" : "end";
+      tx = vuaBenPhai ? px + 12 : px - 12;
+    }
+    const x0 = anchor === "middle" ? tx - w / 2 : anchor === "start" ? tx : tx - w;
+    // Điểm sát trục Ox: nhãn ghi xuống dưới rơi đúng hàng số của trục hoành.
+    const chamTrucNgang = Math.abs(py - axisYpx) < fs * 1.2;
+    const buoc1 = below ? fs * (chamTrucNgang ? 2.35 : 1.2) : fs * 0.55;
+    return { label, below, px, py, tx, ty: py + (below ? buoc1 : -buoc1), x0, x1: x0 + w,
+             anchor, kind: q.kind, buoc1, leader: false };
+  });
+  /**
+   * Gỡ chồng một lượt cho CẢ BỘ nhãn. Ba điều kiện, thiếu cái nào cũng ra lỗi
+   * đã gặp thật:
+   *  - nhãn không đè nhãn khác (hai nhãn CĐ/CT dính thành một khối chữ);
+   *  - nhãn không phủ CHẤM của điểm khác (nhãn "CĐ(0; 2)" đứng đúng chỗ chấm
+   *    cực tiểu (2; 6) — đọc ra toạ độ sai hoàn toàn);
+   *  - nhãn nằm trong khung vẽ, chừa hàng trên cho tên trục (nhãn trèo lên chữ
+   *    "y" ở đầu trục tung).
+   * Thử lần lượt: đẩy xa dần về phía quy ước, hết chỗ thì đổi sang phía kia.
+   */
+  // Chỉ cần nằm trong khung ẢNH; lề p phía trên vốn để dành cho nhãn của điểm
+  // sát đỉnh. Chặn ở p sẽ đẩy nhãn cực đại xuống dưới, đè lên đúng đường cong.
+  const tronKhung = (ty: number) => ty >= fs * 0.9 && ty <= H - 8;
+  placedPoints.forEach((q, i) => {
+    const vuong = (ty: number) => {
+      const chongChu = vatCan.some((o) => !(o.x1 < q.x0 || o.x0 > q.x1) && Math.abs(o.y - ty) < fs * 1.05);
+      if (chongChu) return false;
+      return !placedPoints.some((o, j) => {
+        if (j === i) return false;
+        const chongNhan = j < i && !(o.x1 < q.x0 || o.x0 > q.x1) && Math.abs(o.ty - ty) < fs * 1.15;
+        const phuCham = o.px > q.x0 - 10 && o.px < q.x1 + 10 && Math.abs(o.py - ty) < fs * 0.85;
+        return chongNhan || phuCham;
+      });
+    };
+    const uu = q.below ? 1 : -1;
+    const thu: number[] = [];
+    for (const chieu of [uu, -uu])
+      for (let k = 0; k < 4; k++)
+        thu.push(q.py + chieu * ((chieu === uu ? q.buoc1 : fs * 1.2) + k * fs * 1.25));
+    q.ty = thu.find((ty) => tronKhung(ty) && vuong(ty)) ?? Math.min(Math.max(thu[0], fs * 0.9), H - 8);
+    // Nhãn đã rời xa chấm thì kẻ nét mảnh nối lại cho biết của điểm nào.
+    if (Math.abs(q.ty - q.py) > fs * 1.6 || Math.abs((q.x0 + q.x1) / 2 - q.px) > fs) q.leader = true;
+  });
 
   return (
     <svg className="graph" viewBox={`0 0 ${W} ${H}`} role="img"
@@ -451,47 +585,23 @@ function Graph({ v }: { v: GraphVisual }) {
       </g>
 
       {/* điểm đặc biệt */}
-      {v.points?.map((q, i) => {
-        /**
-         * Nhãn điểm đặt THẲNG TRÊN hoặc THẲNG DƯỚI chấm, không đặt chéo sang
-         * phải như V11.5. Ở cỡ chữ 34 px, nhãn "CĐ(-1; 3)" dài gần 200 px —
-         * đặt chéo là đè lên trục Oy và nuốt mất số trên trục.
-         * Cực tiểu ghi xuống dưới, còn lại ghi lên trên: đó là phía luôn trống.
-         */
-        const label = q.label || `(${q.x}; ${q.y})`;
-        const below = q.kind === "min";
-        const half = (label.length * fs * 0.54) / 2;
-        let cx = Math.min(Math.max(sx(q.x), p + half), W - p - half);
-
-        /**
-         * Hai chỗ nhãn hay đè lên số trên trục, đều chỉ lộ ra khi chữ to:
-         *  - điểm nằm sát trục Ox (cực trị có tung độ 0): nhãn ghi xuống dưới sẽ
-         *    rơi đúng vào hàng số của trục hoành -> đẩy xuống thêm một dòng;
-         *  - điểm nằm sát trục Oy (hoành độ 0): nhãn canh giữa sẽ phủ lên số
-         *    trên trục tung -> lệch hẳn sang một bên.
-         */
-        const axisY = yMin <= 0 && yMax >= 0 ? sy(0) : H - p;
-        const axisX = xMin <= 0 && xMax >= 0 ? sx(0) : p;
-        const chamTrucNgang = Math.abs(sy(q.y) - axisY) < fs * 1.2;
-        if (Math.abs(sx(q.x) - axisX) < half) {
-          const sangPhai = sx(q.x) + half * 2 + fs * 0.5 < W - p;
-          cx = sangPhai ? axisX + half + fs * 0.6 : axisX - half - fs * 0.6;
-        }
-        return (
-          <g key={i}>
-            <circle cx={sx(q.x)} cy={sy(q.y)} r="8" fill={pointFill[q.kind || "plain"]} stroke="#fff" strokeWidth="2" />
-            <text
-              x={cx}
-              y={sy(q.y) + (below ? fs * (chamTrucNgang ? 2.35 : 1.2) : -fs * 0.55)}
-              textAnchor="middle"
-              className="graph-point-label svg-halo"
-              style={{ fontSize: fs }}
-            >
-              {label}
-            </text>
-          </g>
-        );
-      })}
+      {placedPoints.map((q, i) => (
+        <g key={i}>
+          {/* Nhãn phải lệch khỏi chấm thì kẻ một nét mảnh nối lại, nếu không
+              học sinh không biết nhãn nào của điểm nào — đúng lỗi hai nhãn
+              CĐ/CT dính vào nhau ở bản V11.7. */}
+          {q.leader && (
+            <line x1={q.px} y1={q.py}
+                  x2={Math.min(Math.max(q.px, q.x0), q.x1)} y2={q.ty + (q.below ? -fs * 0.32 : fs * 0.28)}
+                  stroke="#8b9aa8" strokeWidth="1.6" strokeDasharray="4 3" />
+          )}
+          <circle cx={q.px} cy={q.py} r="8" fill={pointFill[q.kind || "plain"]} stroke="#fff" strokeWidth="2" />
+          <text x={q.tx} y={q.ty} className="graph-point-label svg-halo"
+                style={{ fontSize: fs, textAnchor: q.anchor }}>
+            {q.label}
+          </text>
+        </g>
+      ))}
 
       {/* chú giải nhiều đồ thị */}
       {rendered.length > 1 && (
@@ -500,7 +610,9 @@ function Graph({ v }: { v: GraphVisual }) {
             <g key={i} transform={`translate(${p + 10}, ${p + fs + i * (fs + 10)})`}>
               <line x1="0" x2="34" y1="0" y2="0" stroke={r.color} strokeWidth="4"
                     strokeDasharray={r.dashed ? "8 5" : undefined} />
-              <text x="42" y={fs / 3}>{r.label || r.expression}</text>
+              {/* Không có nhãn thì viết "y = …" bằng ký hiệu Toán, đừng in
+                  nguyên chuỗi thô "2^x" lên màn chiếu. */}
+              <text x="42" y={fs / 3}>{r.label || `y = ${plainMath(r.expression)}`}</text>
             </g>
           ))}
         </g>

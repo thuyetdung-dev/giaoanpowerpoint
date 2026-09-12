@@ -124,6 +124,38 @@ export const LESSON = {
       minutes: 10,
     },
     {
+      /* Ví dụ 4 dựng lại đúng hai slide thầy chụp và báo sai (bảng biến thiên và
+         đồ thị hàm bậc hai trên bậc nhất). Bảng ở đây để y như bộ sinh nội dung
+         làm SAI — mốc 0 và 2 thì đúng, nhưng cố tình ghi thiếu điểm gián đoạn —
+         để bộ tự sửa (lib/audit.ts) có việc mà làm khi chạy kiểm thử đầu-cuối. */
+      phase: "vi_du",
+      heading: "Ví dụ 4: Khảo sát hàm số $y = \\frac{x^{2}+2x-2}{x-1}$",
+      content:
+        "Tập xác định $D = \\mathbb{R} \\setminus \\{1\\}$.\nĐạo hàm $y' = \\frac{x^{2}-2x}{(x-1)^{2}}$, nên $y' = 0$ khi $x = 0$ hoặc $x = 2$.\nTiệm cận đứng $x = 1$; tiệm cận xiên $y = x + 3$.\nGiá trị cực đại $y(0) = 2$, giá trị cực tiểu $y(2) = 6$.",
+      visuals: [
+        {
+          type: "variation_table",
+          label: "y",
+          expression: "(x^2+2x-2)/(x-1)",
+          x: ["-\\infty", "0", "1", "2", "+\\infty"],
+          derivative: ["+", "0", "-", "||", "-", "0", "+"],
+          values: ["-\\infty", "2", "", "6", "+\\infty"],
+          discontinuities: [{ index: 2, leftValue: "-\\infty", rightValue: "+\\infty" }],
+        },
+        {
+          type: "graph",
+          expression: "(x^2+2x-2)/(x-1)",
+          xMin: -6, xMax: 8, yMin: -10, yMax: 14,
+          asymptotes: [{ kind: "vertical", value: 1 }, { kind: "oblique", expression: "x+3" }],
+          points: [
+            { x: 0, y: 2, label: "CĐ(0; 2)", kind: "max" },
+            { x: 2, y: 6, label: "CT(2; 6)", kind: "min" },
+          ],
+        },
+      ],
+      minutes: 12,
+    },
+    {
       phase: "luyen_tap",
       heading: "Luyện tập: Nhận dạng đồ thị",
       content: "Quan sát đồ thị bên và chọn phương án đúng.",

@@ -20,6 +20,37 @@ export const SAMPLES = {
     derivative: ["-", "0", "+"],
     values: ["+\\infty", "-1", "+\\infty"],
   },
+  /* Bốn hàm phân thức trong bài giảng Bài 4 — đúng những hình thầy chụp lại và
+     báo là sai. Dữ liệu ở đây cố tình để TRỐNG hàng x/y′/y: phần mềm phải tự
+     dựng từ `expression` (lib/bbtsolve.ts), nên nếu bảng hiện ra sai thì lỗi
+     nằm ở phần mềm, không phải ở dữ liệu mẫu. */
+  bbt_nhat_bien: {
+    type: "variation_table", label: "y", expression: "(x+1)/(x-1)",
+    x: ["-\\infty", "1", "+\\infty"],
+    derivative: ["-", "||", "-"],
+    values: ["1", "", "1"],
+    discontinuities: [{ index: 1, leftValue: "-\\infty", rightValue: "+\\infty" }],
+  },
+  bbt_bac_hai_tren_bac_nhat: {
+    type: "variation_table", label: "y", expression: "(x^2-x+1)/(x+1)",
+    x: ["-\\infty", "-1 - \\sqrt{3}", "-1", "-1 + \\sqrt{3}", "+\\infty"],
+    derivative: ["+", "0", "-", "||", "-", "0", "+"],
+    values: ["-\\infty", "-3 - 2\\sqrt{3}", "", "-3 + 2\\sqrt{3}", "+\\infty"],
+    discontinuities: [{ index: 2, leftValue: "-\\infty", rightValue: "+\\infty" }],
+  },
+  do_thi_nhat_bien: {
+    type: "graph",
+    expression: "(x+1)/(x-1)",
+    xMin: -5, xMax: 7, yMin: -6, yMax: 8,
+    asymptotes: [{ kind: "vertical", value: 1 }, { kind: "horizontal", value: 1 }],
+  },
+  do_thi_bac_hai_tren_bac_nhat: {
+    type: "graph",
+    expression: "(x^2+2x-2)/(x-1)",
+    xMin: -6, xMax: 8, yMin: -10, yMax: 14,
+    asymptotes: [{ kind: "vertical", value: 1 }, { kind: "oblique", expression: "x+3" }],
+    points: [{ x: 0, y: 2, label: "CĐ(0; 2)", kind: "max" }, { x: 2, y: 6, label: "CT(2; 6)", kind: "min" }],
+  },
   bang_xet_dau_1: {
     type: "sign_chart",
     label: "f(x)",

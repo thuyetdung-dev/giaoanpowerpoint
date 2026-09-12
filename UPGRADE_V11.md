@@ -2,11 +2,10 @@
 
 Bản này được viết đè lên mã nguồn V10 và **đã build + kiểm thử thành công**.
 
-**Bản hiện tại: V11.7** — `next build` sạch, 39/39 kiểm thử đạt, 22/22 loại hình
-Toán có chữ nền ≥ 32 pt khi in lên slide, hai bài giảng mẫu xuất thử (31 slide
-mỗi bài) mở được bằng LibreOffice, không khối chữ nào tràn khung và mọi khối
-công thức giữ đúng cỡ chữ đã chốt. Xem mục 5 và mục 6 để tự chạy lại các phép
-đo này.
+**Bản hiện tại: V11.8** — `next build` sạch, 67/67 kiểm thử đạt, 26/26 loại hình
+Toán có chữ nền ≥ 32 pt khi in lên slide, hai bài giảng mẫu xuất thử mở được
+bằng LibreOffice, không khối chữ nào tràn khung và mọi khối công thức giữ đúng
+cỡ chữ đã chốt. Xem mục 5, 6 và 7 để tự chạy lại các phép đo này.
 
 ## 1. Tệp mới và tệp thay đổi
 
@@ -33,6 +32,11 @@ công thức giữ đúng cỡ chữ đã chốt. Xem mục 5 và mục 6 để 
 | `lib/bbt.ts` | sửa ở V11.7 | Dùng chung `lib/latex.ts`; thêm `shortLabel()`, `tableCaption()` |
 | `components/MathText.tsx` | **mới ở V11.7** | `MathText` / `MixedMath` tách riêng để quiz và bảng số liệu dùng được mà không tạo vòng lặp import |
 | `lib/prompt.ts` | sửa ở V11.7 | Quy tắc viết công thức cho bộ sinh nội dung |
+| `lib/bbtsolve.ts` | **mới ở V11.8** | Tự **giải** ra bảng biến thiên từ biểu thức: nghiệm `y' = 0` (ghi dạng căn), tiệm cận đứng, giới hạn hai phía |
+| `lib/mathexpr.ts` | sửa ở V11.8 | `detectPoles()` dò tiệm cận theo ngưỡng tương đối với bước lưới, không còn phụ thuộc may rủi |
+| `lib/bbt.ts` | sửa ở V11.8 | `computeLevels()` cho **mỗi nhánh một thang riêng**, không dồn cả bảng vào một thang |
+| `lib/audit.ts` | sửa ở V11.8 | Kiểm mốc bảng có đúng là nghiệm `y'` hay không; tự dựng lại bảng sai từ biểu thức |
+| `components/MathVisuals.tsx` | sửa ở V11.8 | Luôn vẽ hàm chính; xếp nhãn điểm cực trị tránh đè nhau; giới hạn một phía không cưỡi lên vạch đôi |
 | `types/vendor.d.ts` | sửa | Khai báo module bổ sung |
 
 Tệp V10 gốc được giữ nguyên trong thư mục `_v10_backup/` của gói bàn giao.
@@ -227,7 +231,91 @@ thức sửa được ngay trong PowerPoint là dùng định dạng Equation c�
 (OMML), nhưng phải tự viết bộ chuyển đổi và vá lại tệp `.pptx` — sai một dấu là
 PowerPoint báo hỏng tệp, mà ở đây không có PowerPoint thật để kiểm tra.
 
-## 7. Việc nên làm tiếp (chưa nằm trong bản này)
+## 7. V11.8 — Bảng biến thiên và đồ thị hàm phân thức đúng Toán
+
+### Vấn đề
+
+Sáu lỗi này **không phải lỗi trình bày, là lỗi Toán**. Slide đẹp mà nội dung sai
+thì tệ hơn slide xấu, vì học sinh chép vào vở.
+
+| Hiện ra trên slide | Phải là | Nguyên nhân |
+|---|---|---|
+| bảng biến thiên của $y=\frac{x^2-x+1}{x+1}$ ghi mốc $x=0$ và $x=1$ | $x=-1\pm\sqrt3$ | bộ sinh nội dung **bịa** hàng $x$; phần mềm chỉ đối chiếu **dấu** của $y'$ trên từng khoảng, mà dấu thì đúng, nên không bắt được |
+| mũi tên hai nhánh so le nhau, nhánh phải bị kéo dẹt | mỗi nhánh một thang riêng | `computeLevels()` chuẩn hoá cả bảng theo một thang, nên $-\infty$ của nhánh trái ép hết các bậc của nhánh phải về sát nhau |
+| đồ thị chỉ còn đúng một đường thẳng chéo | đường cong **và** tiệm cận | khi có mảng `expressions`, trường `expression` bị bỏ qua hoàn toàn — hàm số chính biến mất |
+| hai nhãn `CĐ` và `CT` dính thành một khối chữ; nhãn đứng đúng chỗ chấm của điểm khác | mỗi nhãn cạnh chấm của nó | nhãn được xếp **rời từng cái**, không cái nào biết cái khác ở đâu |
+| giới hạn một phía ($-\infty$, $+\infty$) cưỡi lên vạch đôi của tiệm cận | nằm hai bên vạch | `textAnchor` đặt ở **thuộc tính** SVG, mà `.bbt-value{text-anchor:middle}` trong CSS thắng thuộc tính |
+| chú giải in nguyên chuỗi thô `2^x` | `y = 2ˣ` | khi hàm chính trùng một phần tử của `expressions`, nhãn đẹp của phần tử đó bị bỏ mất |
+
+### Cách sửa
+
+**1. Biểu thức là nguồn sự thật, bảng chỉ là cách trình bày của nó.**
+`lib/bbtsolve.ts` (mới) tự giải ra bảng: quét lưới tìm nghiệm $y'=0$ bằng chia
+đôi, dò tiệm cận đứng, tính giới hạn hai phía, rồi **viết nghiệm vô tỉ dưới dạng
+căn** ($-1-\sqrt3$, giá trị $-3-2\sqrt3$) chứ không làm tròn. `repairLesson()`
+so bảng của AI với bảng tự giải; khác thì **thay thẳng** và ghi vào danh sách
+"đã sửa" kèm biểu thức. Bảng nào **không có** `expression` thì để nguyên — không
+có gì để đối chiếu thì không được đoán.
+
+**2. Bộ kiểm định siết thêm hai điều.** Mốc giữa bảng phải là nghiệm của $y'$
+hoặc điểm gián đoạn đã khai báo (`BBT_NODE_NOT_ROOT`), và giá trị viết bằng căn
+cũng được đối chiếu — trước đây chuỗi `-3 - 2\sqrt{3}` bị cắt thành `-3-23` rồi
+bỏ qua im lặng, tức là đúng những ô đáng kiểm nhất thì không kiểm.
+
+**3. Mỗi nhánh một thang.** `computeLevels()` nay chia bảng theo các điểm gián
+đoạn, chuẩn hoá bậc trong **từng nhánh** rồi mới trải lên chiều cao ô. Nhờ vậy
+nhánh trái và nhánh phải của hàm phân thức đều dùng hết chiều cao, mũi tên dựng
+đúng độ dốc.
+
+**4. Hàm chính luôn được vẽ.** `expressions` chỉ còn là các đường vẽ **thêm**.
+Nếu hàm chính cũng nằm trong `expressions` thì lấy luôn nhãn/màu/nét đứt của nó.
+`auditGraph()` nhắc một dòng khi danh sách thiếu hàm chính, để thầy biết hình sẽ
+có thêm một đường so với mô tả của AI.
+
+**5. Nhãn điểm được xếp một lượt cho cả bộ**, tránh ba thứ: nhãn khác, **chấm**
+của điểm khác, và chữ đã có trên hình (dãy số hai trục, tên trục). Không còn chỗ
+thì nhãn đổi sang phía đối diện; nhãn đã rời xa chấm thì có nét mảnh nối lại.
+
+**6. `detectPoles()` dò tiệm cận theo ngưỡng tương đối với bước lưới.** Ngưỡng
+cũ `jump > 1e4` gần như không bao giờ đạt trên lưới thật — kiểm thử cũ đạt chỉ
+vì trên đoạn $[-3;3]$ tình cờ có điểm lưới rơi đúng $x=1$. Nay `1/(x-1)` ra
+$x=1$ trên cả $[-40;40]$, còn $x^3-3x$ không bị nhận nhầm nghiệm thành tiệm cận.
+
+### Tự kiểm chứng
+
+```bash
+node tests.mjs              # 67 kiểm thử, có 3 nhóm mới cho V11.8
+
+# Dựng lại 26 loại hình (thêm 4 hình hàm phân thức của Bài 4) và đo cỡ chữ
+npx esbuild scripts/_entry.tsx --bundle --outfile=/tmp/vis-bundle.js \
+    --format=iife --jsx=automatic --define:process.env.NODE_ENV='"production"'
+node scripts/measure-visuals.mjs          # ảnh dựng thử nằm trong .measure/
+
+# Xuất thật Bài 4 (đã thêm Ví dụ 4 — hàm bậc hai trên bậc nhất)
+npx esbuild scripts/_export-entry.tsx --bundle --outfile=/tmp/export-bundle.js \
+    --format=iife --jsx=automatic --define:process.env.NODE_ENV='"production"'
+LESSON=bai4 node scripts/build-sample-pptx.mjs
+python3 scripts/check-pptx.py .measure/bai4.pptx
+```
+
+Bảng tự giải đã được đối chiếu bằng tay với bốn hàm trong bài:
+
+| Hàm số | Mốc $x$ | Giá trị $y$ |
+|---|---|---|
+| $\frac{x+1}{x-1}$ | không có cực trị, tiệm cận đứng $x=1$ | $1 \to -\infty$ ‖ $+\infty \to 1$ |
+| $\frac{x^2-x+1}{x+1}$ | $-1-\sqrt3$, $-1$, $-1+\sqrt3$ | $-3-2\sqrt3$ và $-3+2\sqrt3$ |
+| $\frac{x^2+2x-2}{x-1}$ | $0$, $1$, $2$ | $2$ và $6$ |
+| $\frac{-x^2+x+1}{x-2}$ | $1$, $2$, $3$ | $-1$ và $-5$ |
+
+### Điều còn hạn chế
+
+Bộ giải làm việc **bằng số**, không biến đổi đại số. Nó nhận ra nghiệm vô tỉ dạng
+$\frac{a\pm k\sqrt m}{c}$ với $m$, $c$ nhỏ và viết đúng dạng căn; ngoài khoảng đó
+nó ghi `\approx` kèm hai chữ số thập phân thay vì ghi bừa một dạng căn không đúng.
+Hàm có tham số chữ (ví dụ $y=\frac{x+m}{x-1}$) thì không giải được — bảng của AI
+được giữ nguyên và bộ kiểm định chỉ nhắc thầy tự đối chiếu.
+
+## 8. Việc nên làm tiếp (chưa nằm trong bản này)
 
 1. Bật `"strict": true` trong `tsconfig.json` rồi sửa dần các cảnh báo.
 2. Thêm ESLint config (`next lint` hiện không có cấu hình).
