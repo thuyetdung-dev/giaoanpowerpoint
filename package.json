@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/run-tests.mjs",
+    "verify": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@types/node": "^22.10.0",
