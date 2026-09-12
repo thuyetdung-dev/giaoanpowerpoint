@@ -273,3 +273,163 @@
    vượt hẳn dòng chữ. Kéo về bằng nhau cho cân. */
 .rich-math .katex { font-size: 1.02em; }
 .rich-math .katex-display { margin: .3em 0; }
+
+/* ================================================================== */
+/* V11.9 — Trình biên tập: danh sách từng slide, ô sửa toàn màn hình,  */
+/* ô thống kê bấm được, ô hướng dẫn cho dữ liệu hình.                  */
+/* ================================================================== */
+
+/* --- Ô thống kê giờ là NÚT, nên phải tự dựng lại dáng "viên thuốc":
+       quy tắc cũ trong v9-layout.css chỉ nhắm vào <span>. --- */
+.quality-summary .chip {
+  width: auto; margin: 0; padding: 6px 11px; font: 600 11px/1.3 inherit;
+  border: 1px solid #dce5ec; border-radius: 999px; background: #f7fafc; color: #37506a; cursor: pointer;
+}
+.quality-summary .chip:hover { border-color: #9fb6c6; }
+.quality-summary .chip.open { border-width: 2px; border-color: #168395; background: #eef9fa; color: #0f5e6b; }
+.quality-summary .chip.bad { color: #a32929; background: #fff0f0; border-color: #f1c5c5; }
+.quality-summary .chip.good { color: #14715c; background: #eaf8f3; border-color: #b8e6d8; }
+
+/* --- Bảng chi tiết mở ra khi bấm một ô thống kê --- */
+.detail-panel {
+  margin: -6px 0 16px; border: 1px solid #cbd9e3; border-radius: 10px;
+  background: #fbfdfe; padding: 12px 14px; max-height: 340px; overflow: auto;
+}
+.detail-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.detail-head b { font-size: 13px; }
+.detail-head .ghost { width: auto; margin: 0; padding: 4px 12px; font-size: 11px; }
+.detail-empty { margin: 0; font-size: 12.5px; color: #64717c; }
+.detail-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.detail-list li {
+  display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;
+  background: #fff; border: 1px solid #e3eaf0; border-radius: 8px; padding: 9px 11px;
+}
+.detail-list.compact li { padding: 6px 11px; }
+.detail-list b { font-size: 12px; }
+.detail-list p { margin: 4px 0 0; font-size: 12.5px; color: #3c4d5c; }
+.detail-list small { display: block; margin-top: 3px; font-size: 11px; color: #6b7785; }
+.detail-list button { width: auto; margin: 0; padding: 5px 12px; font-size: 11px; white-space: nowrap; }
+
+/* --- Danh sách slide: đầu danh sách và nút chuyển cách xem --- */
+.list-head { margin-bottom: 10px; }
+.list-head h3 { margin: 0 0 7px; }
+.list-switch { display: flex; gap: 0; border: 1px solid #cbd9e3; border-radius: 7px; overflow: hidden; }
+.list-switch button {
+  width: 50%; margin: 0; border: 0; border-radius: 0; padding: 6px 4px;
+  font: 700 10.5px/1.2 inherit; background: #fff; color: #5a6b7b;
+}
+.list-switch button.on { background: #168395; color: #fff; }
+/* Slide "(tiếp)" thụt vào một chút để thấy ngay nó thuộc mục phía trên. */
+.slide-list > button.cont { margin-left: 14px; width: calc(100% - 14px); background: #fcfdfe; }
+.slide-list > button.auto { background: #f2f5f8; }
+.slide-list > button.auto b { color: #90a2b0; }
+.slide-list > button.auto span { color: #64717c; }
+.slide-list .auto-tag {
+  font-style: normal; font-size: 9px; border-radius: 999px; padding: 3px 5px;
+  color: #5a6b7b; background: #e6ecf1;
+}
+
+/* --- Ô SỬA TOÀN MÀN HÌNH --- */
+.edit-full {
+  position: fixed; inset: 0; z-index: 90; display: grid; grid-template-rows: auto 1fr;
+  background: #eef3f7;
+}
+.edit-full > header {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 18px; background: #173c57; color: #fff;
+}
+.edit-full > header b { font-size: 14px; }
+.edit-full .ef-hint { flex: 1; font-size: 11.5px; color: #c3d6e4; }
+.edit-full > header .done {
+  width: auto; margin: 0; padding: 8px 18px; border: 0; border-radius: 7px;
+  background: #17a67d; color: #fff; font-size: 12px; font-weight: 800;
+}
+.ef-body { display: grid; grid-template-columns: minmax(340px, 1fr) minmax(420px, 1.25fr); gap: 14px; padding: 14px 18px 18px; min-height: 0; }
+.ef-left, .ef-right { min-height: 0; overflow: auto; display: grid; gap: 12px; align-content: start; }
+.ef-left { grid-template-rows: auto 1fr auto auto; }
+.ef-left label { display: grid; gap: 6px; font-size: 12px; font-weight: 700; color: #4a5b6b; }
+/* Không dùng lối viết gộp `font: 15px/1.6 inherit`: "inherit" không phải tên
+   phông hợp lệ trong lối viết gộp nên cả dòng bị bỏ, ô nội dung thừa hưởng
+   font-weight 700 của nhãn và hoá ra chữ nhỏ mà đậm. */
+.ef-left input, .ef-left textarea, .ef-left select {
+  font-family: inherit; font-size: 15px; line-height: 1.6; font-weight: 400; color: #1f2d3a;
+  padding: 10px 12px; border: 1px solid #cbd9e3; border-radius: 8px; background: #fff;
+}
+/* Ô nội dung chiếm hết chỗ còn lại — đây là lý do có chế độ toàn màn hình.
+   Nhãn phải chia hàng auto + 1fr, nếu không ô chữ bị dồn xuống đáy và để lại
+   một khoảng trắng to giữa nhãn và ô. */
+.ef-left label.grow { min-height: 0; grid-template-rows: auto 1fr; }
+.ef-left label.grow textarea { height: 100%; min-height: 220px; resize: none; }
+.ef-left label.notes textarea { min-height: 96px; }
+
+/* --- Thanh công cụ trên khung xem trước ---
+   V11.8 chưa có dáng riêng cho .canvas-head, nên mọi nút thừa hưởng
+   `button{width:100%}` của globals.css và xếp thành ba hàng lệch nhau. */
+.canvas-head { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 10px; }
+.canvas-head .pos { flex: 1 0 100%; font-size: 11.5px; color: #5a6b7b; }
+.canvas-head button { width: auto; margin: 0; padding: 7px 12px; font-size: 11px; font-weight: 800; }
+.canvas-head button:disabled { opacity: .45; cursor: not-allowed; }
+.canvas-head .danger { color: #b91c1c; border-color: #f0c9c9; }
+.canvas-head .edit { background: #6d28d9; border-color: #6d28d9; color: #fff; }
+.canvas-head .edit:disabled { background: #cbd2da; border-color: #cbd2da; }
+.canvas-head .primary { background: #173c57; border-color: #173c57; color: #fff; }
+
+.ef-preview { background: #fff; border: 1px solid #cbd9e3; border-radius: 10px; padding: 12px; }
+.ef-pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.ef-pager span { font-size: 11.5px; color: #5a6b7b; text-align: center; }
+.ef-pager button { width: auto; margin: 0; padding: 5px 11px; font-size: 11px; }
+.ef-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: #64717c; }
+
+.ef-visuals { background: #fff; border: 1px solid #cbd9e3; border-radius: 10px; padding: 12px; }
+.ef-visuals > b { display: block; margin-bottom: 8px; font-size: 12px; }
+.ef-empty { margin: 0; font-size: 12px; color: #64717c; }
+.ef-visuals .visual-row {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;
+  padding: 6px 0; border-top: 1px solid #eef2f6;
+}
+.ef-visuals .visual-row.on { background: #eef9fa; border-radius: 6px; padding: 6px 8px; }
+.ef-visuals .visual-row span { font-size: 12px; font-weight: 700; color: #37506a; }
+.ef-visuals .visual-row button { width: auto; margin: 0; padding: 5px 10px; font-size: 10.5px; }
+.ef-visuals .visual-row .danger { color: #b91c1c; border-color: #f0c9c9; }
+
+/* --- Ô dữ liệu hình + ô hướng dẫn bên cạnh --- */
+.edit-full .visual-editor { margin: 0; }
+.ve-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.ve-head b { margin: 0; }
+.ve-ok { font-size: 11px; font-weight: 700; color: #14715c; }
+.ve-bad { font-size: 11px; font-weight: 700; color: #a32929; }
+.ve-body { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(260px, 1fr); gap: 12px; margin-top: 10px; }
+.ve-body textarea { min-height: 300px; resize: vertical; }
+.ve-guide {
+  border: 1px solid #dce5ec; border-radius: 8px; background: #fff;
+  padding: 10px 12px; max-height: 360px; overflow: auto;
+}
+.ve-intro { margin: 0 0 9px; font-size: 12px; color: #3c4d5c; line-height: 1.5; }
+.ve-guide table { width: 100%; border-collapse: collapse; }
+.ve-guide th {
+  text-align: left; vertical-align: top; padding: 5px 8px 5px 0; width: 38%;
+  font-weight: 400; border-top: 1px solid #eef2f6;
+}
+.ve-guide th code { font: 700 11.5px ui-monospace, SFMono-Regular, Consolas, monospace; color: #0f5e6b; }
+.ve-guide th em { display: block; font-style: normal; font-size: 9.5px; font-weight: 700; color: #a32929; }
+.ve-guide td { vertical-align: top; padding: 5px 0; font-size: 11.5px; line-height: 1.5; color: #4a5b6b; border-top: 1px solid #eef2f6; }
+.ve-guide tr.req td { color: #2f3f4e; }
+.ve-tip { margin: 9px 0 0; font-size: 11.5px; line-height: 1.5; color: #6b5a1f; background: #fffaf0; border-radius: 6px; padding: 7px 9px; }
+.ve-guide details { margin-top: 10px; font-size: 11.5px; }
+.ve-guide summary { cursor: pointer; font-weight: 700; color: #37506a; }
+.ve-guide details ul { margin: 8px 0 0; padding-left: 18px; color: #4a5b6b; line-height: 1.6; }
+.ve-error {
+  margin: 10px 0 0; padding: 9px 11px; font-size: 12.5px; line-height: 1.5;
+  color: #8a1f1f; background: #fff0f0; border: 1px solid #f1c5c5; border-radius: 7px;
+}
+.ve-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.ve-actions button { width: auto; margin: 0; padding: 7px 14px; font-size: 12px; }
+.ve-actions .done { background: #17a67d; color: #fff; border: 0; font-weight: 800; }
+.ve-actions .done:disabled { background: #c7d2d8; color: #eef3f7; cursor: not-allowed; }
+.ve-actions .ghost { color: #5a6b7b; }
+
+@media (max-width: 1100px) {
+  .ef-body { grid-template-columns: 1fr; }
+  .ve-body { grid-template-columns: 1fr; }
+  .ef-left label.grow textarea { min-height: 180px; }
+}

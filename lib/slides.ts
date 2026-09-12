@@ -598,6 +598,62 @@ export function findSlideForSection(deck: SlideSpec[], sectionIndex: number): nu
   return i < 0 ? 0 : i;
 }
 
+/** Một dòng trong danh sách slide của trình biên tập. */
+export type SlideOutline = {
+  /** Vị trí trong bản xuất, đếm từ 0. */
+  index: number;
+  kind: SlideSpec["kind"];
+  /** Chữ hiện trong danh sách. */
+  label: string;
+  /** Mục tương ứng — chỉ slide nội dung mới có. */
+  sectionIndex?: number;
+  /** 0 = slide đầu của mục, 1 trở đi = slide "(tiếp)". */
+  part?: number;
+  /** Tổng số slide mà mục này chiếm. */
+  parts?: number;
+  /** Pha hoạt động, để danh sách tô đúng màu. */
+  phase?: string;
+  /** true = slide do phần mềm tự dựng, không có nội dung để sửa. */
+  auto: boolean;
+};
+
+/**
+ * Liệt kê TỪNG slide của bản xuất.
+ *
+ * Danh sách bên trái của V11.8 chỉ có một dòng cho mỗi mục, nên bài 18 mục mà
+ * xuất ra 74 slide thì 56 slide kia không có cách nào mở ra xem. Giáo viên phải
+ * xuất cả tệp PowerPoint mới biết slide "(tiếp)" trông thế nào — quá muộn.
+ */
+export function outlineDeck(deck: SlideSpec[]): SlideOutline[] {
+  // Đếm trước số slide của mỗi mục để ghi được "tiếp 2/3".
+  const dem = new Map<number, number>();
+  deck.forEach((s) => {
+    if (s.kind === "content") dem.set(s.sectionIndex, (dem.get(s.sectionIndex) ?? 0) + 1);
+  });
+  const demYeuCau = deck.filter((s) => s.kind === "objectives").length;
+
+  return deck.map((s, index) => {
+    if (s.kind === "cover") return { index, kind: s.kind, label: "Trang bìa", auto: true };
+    if (s.kind === "end") return { index, kind: s.kind, label: "Trang kết", auto: true };
+    if (s.kind === "objectives")
+      return {
+        index, kind: s.kind, auto: true,
+        label: demYeuCau > 1 ? `Yêu cầu cần đạt (${s.part + 1}/${demYeuCau})` : "Yêu cầu cần đạt",
+      };
+    if (s.kind === "divider")
+      return { index, kind: s.kind, label: "Trang phân cách", phase: s.phase, auto: true };
+
+    const parts = dem.get(s.sectionIndex) ?? 1;
+    const ten = s.section.heading?.trim() || "Chưa có tiêu đề";
+    return {
+      index, kind: s.kind, auto: false,
+      label: parts > 1 && s.part > 0 ? `${ten} (tiếp ${s.part + 1}/${parts})` : ten,
+      sectionIndex: s.sectionIndex, part: s.part, parts,
+      phase: s.section.phase,
+    };
+  });
+}
+
 /* ------------------------------------------------------------------ */
 /* Chữ trên slide                                                      */
 /* ------------------------------------------------------------------ */

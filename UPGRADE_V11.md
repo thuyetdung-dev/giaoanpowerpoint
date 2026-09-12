@@ -2,10 +2,10 @@
 
 Bản này được viết đè lên mã nguồn V10 và **đã build + kiểm thử thành công**.
 
-**Bản hiện tại: V11.8** — `next build` sạch, 67/67 kiểm thử đạt, 26/26 loại hình
+**Bản hiện tại: V11.9** — `next build` sạch, 82/82 kiểm thử đạt, 26/26 loại hình
 Toán có chữ nền ≥ 32 pt khi in lên slide, hai bài giảng mẫu xuất thử mở được
 bằng LibreOffice, không khối chữ nào tràn khung và mọi khối công thức giữ đúng
-cỡ chữ đã chốt. Xem mục 5, 6 và 7 để tự chạy lại các phép đo này.
+cỡ chữ đã chốt. Xem mục 5, 6, 7 và 8 để tự chạy lại các phép đo này.
 
 ## 1. Tệp mới và tệp thay đổi
 
@@ -37,6 +37,10 @@ cỡ chữ đã chốt. Xem mục 5, 6 và 7 để tự chạy lại các phép 
 | `lib/bbt.ts` | sửa ở V11.8 | `computeLevels()` cho **mỗi nhánh một thang riêng**, không dồn cả bảng vào một thang |
 | `lib/audit.ts` | sửa ở V11.8 | Kiểm mốc bảng có đúng là nghiệm `y'` hay không; tự dựng lại bảng sai từ biểu thức |
 | `components/MathVisuals.tsx` | sửa ở V11.8 | Luôn vẽ hàm chính; xếp nhãn điểm cực trị tránh đè nhau; giới hạn một phía không cưỡi lên vạch đôi |
+| `lib/visualguide.ts` | **mới ở V11.9** | Hướng dẫn từng trường của cả 16 loại hình + ví dụ mẫu + bộ đọc JSON báo lỗi bằng tiếng Việt |
+| `lib/slides.ts` | sửa ở V11.9 | `outlineDeck()` — liệt kê TỪNG slide của bản xuất cho danh sách bên trái |
+| `app/page.tsx` | sửa ở V11.9 | Danh sách từng slide, ô sửa toàn màn hình, ô thống kê bấm được, ô hướng dẫn dữ liệu hình |
+| `scripts/shoot-editor.mjs` | **mới ở V11.9** | Mở trang thật bằng Chromium, chụp ảnh và kiểm từng chỗ vừa sửa của giao diện |
 | `types/vendor.d.ts` | sửa | Khai báo module bổ sung |
 
 Tệp V10 gốc được giữ nguyên trong thư mục `_v10_backup/` của gói bàn giao.
@@ -315,7 +319,77 @@ nó ghi `\approx` kèm hai chữ số thập phân thay vì ghi bừa một dạ
 Hàm có tham số chữ (ví dụ $y=\frac{x+m}{x-1}$) thì không giải được — bảng của AI
 được giữ nguyên và bộ kiểm định chỉ nhắc thầy tự đối chiếu.
 
-## 8. Việc nên làm tiếp (chưa nằm trong bản này)
+## 8. V11.9 — Trình biên tập: xem được mọi slide, sửa được thoải mái
+
+### Vấn đề
+
+Năm chỗ giáo viên chỉ ra, đều là chuyện dùng được hay không dùng được, không
+phải chuyện đẹp xấu.
+
+| Giáo viên gặp | Phải là | Nguyên nhân |
+|---|---|---|
+| Bài 18 mục xuất ra **74 slide** mà danh sách bên trái chỉ có 18 dòng | thấy hết 74 slide | danh sách vẽ theo `lesson.sections`, còn bản xuất thì do `buildDeck()` chia trang — 56 slide "(tiếp)" không có dòng nào để bấm |
+| Ô "Sửa nội dung slide" nằm trong cột giữa, rộng chừng một phần ba màn hình | ô sửa toàn màn hình | ô nội dung cao 6 dòng cho slide có 5 ý kèm công thức; gõ tới đâu cũng phải cuộn |
+| Bấm "5 gợi ý sư phạm" không ra gì | mở bảng liệt kê 5 gợi ý đó | các ô thống kê là `<span>`, chỉ in con số |
+| Nút "Xem thử 10 slide" | bỏ | xuất một tệp riêng 10 slide để xem thử, trong khi khung xem trước đã là hình ảnh thật của từng slide |
+| Ô dữ liệu hình là một ô JSON trắng | có hướng dẫn bên cạnh | tên trường chỉ người viết mã mới biết; gõ sai một chữ là hình thành khung trống mà không báo thiếu gì |
+
+### Cách sửa
+
+**1. Danh sách liệt kê TỪNG slide** (`outlineDeck()` trong `lib/slides.ts`).
+Mỗi dòng là một slide của bản xuất, đúng thứ tự sẽ mở trong PowerPoint: trang
+bìa, "Yêu cầu cần đạt", trang phân cách từng pha, slide nội dung, trang kết.
+Slide "(tiếp)" thụt vào một chút và ghi rõ *tiếp 2/3*, bấm vào là xem được ngay
+— trước đây phải xuất cả tệp mới biết nó trông thế nào. Nút **Theo mục** đổi về
+cách xem cũ khi cần sắp xếp lại bài.
+
+Bốn slide bìa / phân cách / kết được đánh dấu *tự dựng* và các nút LÊN, XUỐNG,
+NHÂN BẢN, XOÁ MỤC bị chặn ở đó: chúng tác động lên cả **mục**, mà lúc ấy mục
+đang chọn không nằm trên màn hình — bấm XOÁ MỤC là xoá mất thứ mình không thấy.
+
+**2. Ô sửa toàn màn hình.** Nửa trái là tiêu đề, nội dung (chiếm hết chiều cao
+còn lại) và ghi chú; nửa phải là khung slide 16:9 cập nhật ngay khi gõ, kèm hai
+nút **Slide trước / Slide sau** để xem chữ vừa gõ tràn sang slide "(tiếp)" ra
+sao. Esc hoặc **XONG** để đóng; đang mở ô dữ liệu hình thì Esc đóng ô đó trước,
+không làm mất đoạn JSON đang gõ dở.
+
+**3. Mỗi ô thống kê là một nút.** Bấm vào mở bảng liệt kê chi tiết, mỗi dòng có
+nút nhảy tới đúng mục cần sửa. Ô "18 slide" cũ gây hiểu nhầm nên tách thành hai:
+**mục nội dung** và **slide khi xuất**.
+
+**4. Ô hướng dẫn cạnh ô dữ liệu hình** (`lib/visualguide.ts`). Hiện đúng cho
+loại hình đang sửa: từng trường, trường nào bắt buộc, một câu giải thích bằng
+tiếng Việt, mấy điều dễ sai, và nút **Chèn mẫu** đưa sẵn một ví dụ đầy đủ để
+thầy chỉ việc sửa số. Bộ đọc JSON báo lỗi bằng tiếng Việt kèm số dòng ("có dấu
+phẩy đứng trước dấu }" thay vì "Unexpected token } in JSON at position 58") và
+nút **Áp dụng** bị chặn khi dữ liệu chưa đọc được, nên không lưu được dữ liệu hỏng.
+
+### Tự kiểm chứng
+
+Giao diện không kiểm được bằng kiểu dữ liệu hay unit test, nên có thêm một bộ mở
+trang thật rồi xem ảnh:
+
+```bash
+npm run build
+npx next start -p 3123 &
+node scripts/shoot-editor.mjs        # ảnh lưu vào .measure/ui-*.png
+```
+
+Bộ này tự dừng và báo lỗi nếu: số dòng trong danh sách khác số slide của bản
+xuất, nút "Xem thử 10 slide" còn đó, bấm slide "(tiếp)" không mở ra đúng slide,
+ở slide tự dựng mà các nút sửa mục vẫn bấm được, gõ JSON sai mà nút Áp dụng
+không bị chặn, "Chèn mẫu" cho ra dữ liệu không đọc được, hay Esc không đóng
+được ô sửa. `node tests.mjs` kiểm thêm phần thuần tính toán: `outlineDeck()`
+liệt kê đủ mọi slide, và **cả 16 ví dụ mẫu đều là dữ liệu hợp lệ** — nếu không
+thì nút "Chèn mẫu" sẽ chèn vào một thứ hỏng.
+
+### Điều còn hạn chế
+
+Slide "(tiếp)" xem được nhưng **không sửa riêng được**: phần mềm tự chia trang
+theo sức chứa, nên sửa là sửa cả mục, và số slide "(tiếp)" sẽ tự thay đổi theo.
+Muốn tách hẳn thành hai mục riêng thì dùng nút **NHÂN BẢN** rồi cắt nội dung.
+
+## 9. Việc nên làm tiếp (chưa nằm trong bản này)
 
 1. Bật `"strict": true` trong `tsconfig.json` rồi sửa dần các cảnh báo.
 2. Thêm ESLint config (`next lint` hiện không có cấu hình).

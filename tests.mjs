@@ -4,6 +4,9 @@ import { computeLevels } from "./_build/lib/bbt.js";
 import * as Lib from "./_build/lib/library.js";
 import { solveVariationTable, vietSo } from "./_build/lib/bbtsolve.js";
 import { auditLesson, repairLesson } from "./_build/lib/audit.js";
+import { buildDeck, outlineDeck } from "./_build/lib/slides.js";
+import { VISUAL_GUIDE, readVisualJson, sampleFor } from "./_build/lib/visualguide.js";
+import { VISUAL_LABEL } from "./_build/lib/themes.js";
 
 let pass=0, fail=0;
 const eq=(name,a,b,tol=1e-9)=>{const ok=(typeof a==="number"&&typeof b==="number")?Math.abs(a-b)<=tol:JSON.stringify(a)===JSON.stringify(b);ok?pass++:(fail++,console.log("FAIL",name,"got",JSON.stringify(a),"want",JSON.stringify(b)));};
@@ -219,6 +222,55 @@ eq("bảng đã đúng thì tự sửa không đụng vào", (() => {
     visuals: [{ type: "variation_table", label: "y", expression: "x^3-3x+2", x: T.x, derivative: T.derivative, values: T.values, discontinuities: T.discontinuities }] }] };
   return repairLesson(bai).changes.some((c) => c.includes("bảng biến thiên"));
 })(), false);
+
+// --- V11.9: danh sách phải liệt kê ĐỦ mọi slide của bản xuất ---
+// Bài 18 mục xuất ra 74 slide thì V11.8 chỉ hiện 18 dòng; 56 slide "(tiếp)"
+// không có cách nào mở ra xem trước khi xuất cả tệp PowerPoint.
+const baiDai = {
+  title: "Kiểm thử danh sách",
+  objectives: ["Mục tiêu một.", "Mục tiêu hai."],
+  sections: [
+    { heading: "Mở đầu", phase: "khoi_dong", content: "Một ý ngắn." },
+    {
+      heading: "Ví dụ dài",
+      phase: "vi_du",
+      // Đủ dài để phần mềm phải tách sang slide "(tiếp)".
+      content: Array.from({ length: 14 }, (_, i) => `Ý thứ ${i + 1} của ví dụ này, viết dài cho kín dòng.`).join("\n"),
+      visuals: [{ type: "graph", expression: "x^2", xMin: -3, xMax: 3, yMin: -1, yMax: 9 }],
+    },
+  ],
+};
+const deckDai = buildDeck(baiDai, {});
+const dan = outlineDeck(deckDai);
+eq("mỗi slide một dòng", dan.length, deckDai.length);
+eq("có bìa và trang kết", [dan[0].label, dan[dan.length - 1].label], ["Trang bìa", "Trang kết"]);
+eq("bìa / phân cách / kết được đánh dấu là tự dựng",
+   dan.filter((o) => o.auto).every((o) => o.kind !== "content"), true);
+eq("mục dài bị tách thành nhiều slide", dan.filter((o) => o.sectionIndex === 1).length > 1, true);
+eq("slide tiếp ghi rõ trang mấy trên mấy",
+   dan.filter((o) => o.sectionIndex === 1 && o.part > 0).every((o) => /\(tiếp \d+\/\d+\)$/.test(o.label)), true);
+eq("slide đầu của mục KHÔNG ghi chữ tiếp",
+   dan.find((o) => o.sectionIndex === 1 && o.part === 0).label, "Ví dụ dài");
+eq("mọi dòng nội dung đều chỉ về đúng mục",
+   dan.filter((o) => !o.auto).every((o) => baiDai.sections[o.sectionIndex] !== undefined), true);
+
+// --- V11.9: ô dữ liệu hình phải báo lỗi bằng tiếng Việt, không phải tiếng Anh ---
+eq("ô trống thì nhắc bấm Chèn mẫu", readVisualJson("  ").error.includes("Chèn mẫu"), true);
+eq("dấu phẩy thừa được gọi đúng tên",
+   readVisualJson('{\n "type": "graph",\n "expression": "x^2",\n}').error.includes("dấu phẩy"), true);
+eq("báo đúng dòng bị sai",
+   /dòng 4/.test(readVisualJson('{\n "type": "graph",\n "expression": "x^2",\n}').error), true);
+eq("thiếu trường type thì nói rõ", readVisualJson('{"expression":"x^2"}').error.includes('"type"'), true);
+eq("dữ liệu đúng thì đọc được", readVisualJson('{"type":"graph","expression":"x^2"}').ok, true);
+// Nút "Chèn mẫu" dùng chính ví dụ trong hướng dẫn, nên mẫu nào cũng phải đọc được.
+eq("mọi ví dụ mẫu đều là dữ liệu hợp lệ",
+   Object.keys(VISUAL_GUIDE).filter((t) => !readVisualJson(sampleFor(t)).ok), []);
+eq("mẫu nào cũng khai đúng type của nó",
+   Object.keys(VISUAL_GUIDE).filter((t) => readVisualJson(sampleFor(t)).value.type !== t), []);
+// 16 loại hình trong lib/types.ts thì phải có 16 mục hướng dẫn, nếu không giáo
+// viên gặp lại đúng cái ô JSON trắng như trước.
+eq("có hướng dẫn cho đủ 16 loại hình",
+   Object.keys(VISUAL_LABEL).filter((t) => !VISUAL_GUIDE[t]), []);
 
 console.log(`\n${pass} kiểm thử đạt, ${fail} lỗi`);
 process.exit(fail?1:0);

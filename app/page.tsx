@@ -22,7 +22,8 @@ import { readSource, type SourceDoc } from "@/lib/importer";
 import { exportHtml, exportJson, exportPptx, exportPreviewImage, exportWorksheet } from "@/lib/exporters";
 import { THEMES, PHASE_META, getTheme } from "@/lib/themes";
 import { SlideFrame, Presenter } from "@/components/SlideView";
-import { buildDeck, findSlideForSection } from "@/lib/slides";
+import { buildDeck, findSlideForSection, outlineDeck } from "@/lib/slides";
+import { COMMON_RULES, VISUAL_GUIDE, readVisualJson, sampleFor } from "@/lib/visualguide";
 import {
   duplicateEntry, listLibrary, migrateLegacyDraft, newId, QUOTA_HINT, readActiveId,
   readEntry, readForm, removeEntry, saveEntry, writeActiveId, writeForm, type LibraryMeta,
@@ -39,6 +40,17 @@ const INITIAL: FormState = {
 };
 
 const PHASES = Object.entries(PHASE_META);
+
+/** Tên bảng chi tiết mở ra khi bấm vào một ô thống kê. */
+const DETAIL_TITLE: Record<string, string> = {
+  errors: "Lỗi chặn xuất PowerPoint",
+  warnings: "Cảnh báo",
+  tips: "Gợi ý sư phạm",
+  muc: "Các mục nội dung",
+  slide: "Từng slide trong bản xuất",
+  visuals: "Các hình Toán trong bài",
+  notes: "Các mục có ghi chú cho giáo viên",
+};
 
 /** "19/04 lúc 15:32" — đủ để phân biệt các lần sửa trong cùng một tuần. */
 function whenLabel(ms: number): string {
@@ -141,6 +153,18 @@ export default function Page() {
   const [editing, setEditing] = useState(false);
   const [visualDraft, setVisualDraft] = useState<{ index: number; text: string } | null>(null);
   const [presenting, setPresenting] = useState<number | null>(null);
+  /**
+   * Slide đang xem, tính theo đúng thứ tự của bản xuất.
+   *
+   * -1 nghĩa là "chưa chọn slide cụ thể" — khung xem tự về slide đầu của mục
+   * đang chọn. Nhờ vậy khi mở bài khác, xoá hay đổi chỗ mục thì không cần tính
+   * lại chỉ số bằng tay: danh sách slide đã đổi mà con số cũ thì thành vô nghĩa.
+   */
+  const [slideIdx, setSlideIdx] = useState(-1);
+  /** "slide" = liệt kê từng slide của bản xuất; "muc" = liệt kê theo mục như V11.8. */
+  const [listMode, setListMode] = useState<"slide" | "muc">("slide");
+  /** Ô thống kê đang mở bảng chi tiết. */
+  const [detail, setDetail] = useState<null | "errors" | "warnings" | "tips" | "muc" | "slide" | "visuals" | "notes">(null);
 
   /* ---------- Thư viện bài giảng ---------- */
   /** Chỉ mục các bài đã lưu trong trình duyệt này. */
@@ -200,6 +224,24 @@ export default function Page() {
     return () => clearTimeout(timer);
   }, [form, lesson, activeId]);
 
+  /**
+   * Esc đóng ô sửa toàn màn hình.
+   *
+   * Ô trùm kín màn hình mà không có lối ra bằng bàn phím thì giáo viên dễ tưởng
+   * phần mềm treo. Nếu đang mở ô dữ liệu hình thì Esc đóng ô đó trước — mất một
+   * đoạn JSON đang gõ dở vì bấm Esc quá tay là điều rất khó chịu.
+   */
+  useEffect(() => {
+    if (!editing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (visualDraft) setVisualDraft(null);
+      else setEditing(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editing, visualDraft]);
+
   /* ---------- Tiện ích ---------- */
 
   const set = (key: keyof FormState) =>
@@ -217,8 +259,41 @@ export default function Page() {
   const current = lesson?.sections[selected];
   const deckMeta = useMemo(() => ({ teacher: form.teacher, school: form.school }), [form.teacher, form.school]);
   const deck = useMemo(() => (lesson ? buildDeck(lesson, deckMeta) : []), [lesson, deckMeta]);
-  /** Slide đang xem trong trình biên tập, tính theo đúng thứ tự của bản xuất. */
-  const deckIndex = useMemo(() => findSlideForSection(deck, selected), [deck, selected]);
+  const outline = useMemo(() => outlineDeck(deck), [deck]);
+  /**
+   * Slide đang xem. Tự lành lại khi danh sách slide đổi: chỉ số cũ vượt ra
+   * ngoài thì quay về slide đầu của mục đang chọn, không bao giờ trỏ vào chỗ
+   * không còn tồn tại.
+   */
+  const deckIndex = useMemo(() => {
+    if (!deck.length) return 0;
+    if (slideIdx < 0 || slideIdx >= deck.length) return findSlideForSection(deck, selected);
+    return slideIdx;
+  }, [deck, slideIdx, selected]);
+  const spec = deck[deckIndex];
+  /** Slide bìa / phân cách / kết do phần mềm tự dựng — không có nội dung để sửa. */
+  const autoSlide = !!spec && spec.kind !== "content";
+
+  /** Chọn theo MỤC: khung xem về slide đầu của mục đó. */
+  const pickSection = useCallback((i: number) => {
+    setSelected(i);
+    setSlideIdx(-1);
+    setVisualDraft(null);
+  }, []);
+
+  /** Chọn theo SLIDE: xem đúng slide đó, kể cả slide "(tiếp)". */
+  const pickSlide = useCallback((i: number) => {
+    setSlideIdx(i);
+    const s = deck[i];
+    if (s && s.kind === "content") setSelected(s.sectionIndex);
+    setVisualDraft(null);
+  }, [deck]);
+
+  /** Nhảy tới mục số n (1-based, như audit ghi) từ bảng chi tiết. */
+  const jumpToSection = useCallback((oneBased: number) => {
+    pickSection(Math.max(0, oneBased - 1));
+    setDetail(null);
+  }, [pickSection]);
   const theme = useMemo(() => getTheme(lesson?.theme), [lesson?.theme]);
   const currentIssues = audit.filter((a) => a.level !== "ok" && (!a.section || a.section === selected + 1));
 
@@ -279,6 +354,7 @@ export default function Page() {
       setActiveId(null);
       applyLesson(parsed);
       setSelected(0);
+      setSlideIdx(-1);
       setMessage(`Đã nạp bài giảng "${parsed.title}" gồm ${parsed.sections.length} slide.`);
     } catch (e) {
       setMessage(`File JSON không đúng cấu trúc LessonStudio: ${e instanceof Error ? e.message : ""}`);
@@ -337,6 +413,7 @@ export default function Page() {
       setActiveId(null); // bài vừa sinh ra là một mục mới trong thư viện
       applyLesson(repaired);
       setSelected(0);
+      setSlideIdx(-1);
       setModel(result.modelUsed);
 
       const report = auditLesson(repaired);
@@ -371,6 +448,7 @@ export default function Page() {
     setLesson(null);
     setAudit([]);
     setSelected(0);
+    setSlideIdx(-1);
     setEditing(false);
     setVisualDraft(null);
     setPresenting(null);
@@ -413,6 +491,7 @@ export default function Page() {
     setActiveId(id);
     writeActiveId(id);
     setSelected(0);
+    setSlideIdx(-1);
     setEditing(false);
     setVisualDraft(null);
     setPresenting(null);
@@ -441,7 +520,7 @@ export default function Page() {
 
   /* ---------- Xuất bản ---------- */
 
-  async function exportDeck(limitSlides?: number) {
+  async function exportDeck() {
     if (!lesson || !previewRef.current) return;
     const report = auditLesson(lesson);
     setAudit(report);
@@ -452,9 +531,9 @@ export default function Page() {
     setBusy(true);
     try {
       await exportPptx(previewRef.current, lesson, {
-        teacher: form.teacher, school: form.school, limitSlides, includeNotes: teacherNotes,
+        teacher: form.teacher, school: form.school, includeNotes: teacherNotes,
       });
-      setMessage(limitSlides ? `Đã xuất bản xem thử ${limitSlides} slide.` : "Đã xuất PowerPoint bài giảng hoàn chỉnh.");
+      setMessage(`Đã xuất PowerPoint hoàn chỉnh: ${deck.length} slide.`);
     } catch (e) {
       setMessage(`Không xuất được PowerPoint: ${e instanceof Error ? e.message : "lỗi chưa xác định"}.`);
     } finally {
@@ -480,6 +559,7 @@ export default function Page() {
     next.sections.splice(to, 0, item);
     applyLesson(next);
     setSelected(to);
+    setSlideIdx(-1);
   }
 
   function removeSection() {
@@ -488,6 +568,7 @@ export default function Page() {
     next.sections.splice(selected, 1);
     applyLesson(next);
     setSelected(Math.max(0, selected - 1));
+    setSlideIdx(-1);
   }
 
   function duplicateSection() {
@@ -496,6 +577,7 @@ export default function Page() {
     next.sections.splice(selected + 1, 0, structuredClone(next.sections[selected]));
     applyLesson(next);
     setSelected(selected + 1);
+    setSlideIdx(-1);
   }
 
   function saveVisualDraft() {
@@ -708,7 +790,9 @@ export default function Page() {
                 </button>
                 <button className="newlesson" onClick={startNewLesson}>✚ Bài mới</button>
                 <button className="present" onClick={() => setPresenting(deckIndex)}>⛶ Trình chiếu</button>
-                <button className="trial" onClick={() => exportDeck(10)} disabled={busy}>Xem thử 10 slide</button>
+                {/* V11.9: bỏ nút "Xem thử 10 slide". Khung xem trước bên dưới đã là
+                    hình ảnh thật của từng slide, và nay danh sách bên trái mở được
+                    mọi slide, nên xuất một tệp 10 slide chỉ làm rối. */}
                 <button onClick={() => exportDeck()} disabled={busy}>⬇ Xuất PowerPoint</button>
                 <button onClick={() => exportHtml(previewRef.current!, lesson)}>Trình chiếu HTML</button>
                 <button onClick={() => exportWorksheet(lesson, { teacher: form.teacher, school: form.school })}>Phiếu học tập</button>
@@ -731,34 +815,210 @@ export default function Page() {
               />
             )}
 
+            {/* Mỗi ô thống kê là một NÚT. V11.8 chỉ in con số: thấy "5 gợi ý sư
+                phạm" mà không có cách nào biết 5 gợi ý đó là gì, ở slide nào. */}
             <div className="quality-summary">
-              <span className={errors.length ? "bad" : "good"}>
+              <button
+                className={`chip ${errors.length ? "bad" : "good"} ${detail === "errors" ? "open" : ""}`}
+                onClick={() => setDetail(detail === "errors" ? null : "errors")}
+              >
                 {errors.length ? `⚠ ${errors.length} lỗi chặn xuất` : "✓ Sẵn sàng xuất PowerPoint"}
-              </span>
-              {warnings.length > 0 && <span className="warn">{warnings.length} cảnh báo</span>}
-              {tips.length > 0 && <span className="tipcount">{tips.length} gợi ý sư phạm</span>}
-              <span>{lesson.sections.length} slide</span>
-              <span>{lesson.sections.reduce((n, s) => n + (s.visuals?.length || 0), 0)} hình Toán</span>
-              <span>{lesson.sections.filter((s) => s.notes?.trim()).length} slide có ghi chú</span>
+              </button>
+              {warnings.length > 0 && (
+                <button className={`chip warn ${detail === "warnings" ? "open" : ""}`}
+                        onClick={() => setDetail(detail === "warnings" ? null : "warnings")}>
+                  {warnings.length} cảnh báo
+                </button>
+              )}
+              {tips.length > 0 && (
+                <button className={`chip tipcount ${detail === "tips" ? "open" : ""}`}
+                        onClick={() => setDetail(detail === "tips" ? null : "tips")}>
+                  {tips.length} gợi ý sư phạm
+                </button>
+              )}
+              <button className={`chip ${detail === "muc" ? "open" : ""}`}
+                      onClick={() => setDetail(detail === "muc" ? null : "muc")}>
+                {lesson.sections.length} mục nội dung
+              </button>
+              <button className={`chip ${detail === "slide" ? "open" : ""}`}
+                      onClick={() => setDetail(detail === "slide" ? null : "slide")}>
+                {deck.length} slide khi xuất
+              </button>
+              <button className={`chip ${detail === "visuals" ? "open" : ""}`}
+                      onClick={() => setDetail(detail === "visuals" ? null : "visuals")}>
+                {lesson.sections.reduce((n, s) => n + (s.visuals?.length || 0), 0)} hình Toán
+              </button>
+              <button className={`chip ${detail === "notes" ? "open" : ""}`}
+                      onClick={() => setDetail(detail === "notes" ? null : "notes")}>
+                {lesson.sections.filter((s) => s.notes?.trim()).length} mục có ghi chú
+              </button>
             </div>
 
-            <div className="editor-grid">
-              <nav className="slide-list">
-                <h3>Danh sách slide</h3>
-                {lesson.sections.map((s, i) => {
-                  const count = errors.filter((e) => e.section === i + 1).length;
-                  const meta = s.phase ? PHASE_META[s.phase] : undefined;
+            {detail && (
+              <div className="detail-panel">
+                <div className="detail-head">
+                  <b>{DETAIL_TITLE[detail]}</b>
+                  <button className="ghost" onClick={() => setDetail(null)}>Đóng</button>
+                </div>
+
+                {(detail === "errors" || detail === "warnings" || detail === "tips") && (() => {
+                  const list = detail === "errors" ? errors : detail === "warnings" ? warnings : tips;
+                  if (!list.length) return <p className="detail-empty">Không có mục nào. Bài giảng sẵn sàng xuất PowerPoint.</p>;
                   return (
-                    <button key={i} className={selected === i ? "selected" : ""} onClick={() => { setSelected(i); setEditing(false); setVisualDraft(null); }}>
-                      <b>{String(i + 1).padStart(2, "0")}</b>
-                      <span>
-                        {s.heading || "Chưa có tiêu đề"}
-                        {meta && <em style={{ color: `#${meta.color}` }}>{meta.icon} {meta.label}</em>}
-                      </span>
-                      <i className={count ? "issue" : "pass"}>{count ? `${count} lỗi` : "Đạt"}</i>
-                    </button>
+                    <ul className="detail-list">
+                      {list.map((a, i) => (
+                        <li key={i}>
+                          <div>
+                            <b>{a.section ? `Mục ${a.section}` : "Cả bài"} · {a.code}</b>
+                            <p>{a.message}</p>
+                            {a.fix && <small>{a.fix}</small>}
+                          </div>
+                          {a.section && <button onClick={() => jumpToSection(a.section!)}>Mở mục {a.section}</button>}
+                        </li>
+                      ))}
+                    </ul>
                   );
-                })}
+                })()}
+
+                {detail === "muc" && (
+                  <ul className="detail-list">
+                    {lesson.sections.map((s, i) => {
+                      const m = s.phase ? PHASE_META[s.phase] : undefined;
+                      const slides = outline.filter((o) => o.sectionIndex === i).length;
+                      return (
+                        <li key={i}>
+                          <div>
+                            <b>{String(i + 1).padStart(2, "0")} · {s.heading || "Chưa có tiêu đề"}</b>
+                            <small>
+                              {m ? `${m.icon} ${m.label} · ` : ""}{slides} slide khi xuất
+                              {s.visuals?.length ? ` · ${s.visuals.length} hình` : ""}
+                              {s.minutes ? ` · ${s.minutes} phút` : ""}
+                              {s.notes?.trim() ? " · có ghi chú" : ""}
+                            </small>
+                          </div>
+                          <button onClick={() => jumpToSection(i + 1)}>Mở</button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                {detail === "slide" && (
+                  <ul className="detail-list compact">
+                    {outline.map((o) => (
+                      <li key={o.index}>
+                        <div>
+                          <b>Slide {o.index + 1} · {o.label}</b>
+                          {o.auto && <small>Phần mềm tự dựng, không có nội dung để sửa</small>}
+                        </div>
+                        <button onClick={() => { pickSlide(o.index); setDetail(null); }}>Xem</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {detail === "visuals" && (() => {
+                  const rows = lesson.sections.flatMap((s, i) =>
+                    (s.visuals ?? []).map((v, j) => ({ i, j, v, heading: s.heading })));
+                  if (!rows.length) return <p className="detail-empty">Bài này chưa có hình Toán nào.</p>;
+                  return (
+                    <ul className="detail-list compact">
+                      {rows.map((r) => (
+                        <li key={`${r.i}-${r.j}`}>
+                          <div>
+                            <b>{VISUAL_LABEL[r.v.type] || r.v.type}</b>
+                            <small>Mục {r.i + 1} · {r.heading || "Chưa có tiêu đề"}</small>
+                          </div>
+                          <button onClick={() => jumpToSection(r.i + 1)}>Mở mục {r.i + 1}</button>
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                })()}
+
+                {detail === "notes" && (() => {
+                  const rows = lesson.sections.map((s, i) => ({ i, s })).filter((r) => r.s.notes?.trim());
+                  if (!rows.length) return <p className="detail-empty">Chưa mục nào có ghi chú. Ghi chú được xuất vào phần Notes của PowerPoint.</p>;
+                  return (
+                    <ul className="detail-list">
+                      {rows.map((r) => (
+                        <li key={r.i}>
+                          <div>
+                            <b>Mục {r.i + 1} · {r.s.heading || "Chưa có tiêu đề"}</b>
+                            <p>{r.s.notes!.trim().slice(0, 180)}{r.s.notes!.trim().length > 180 ? "…" : ""}</p>
+                          </div>
+                          <button onClick={() => jumpToSection(r.i + 1)}>Mở</button>
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                })()}
+              </div>
+            )}
+
+            <div className="editor-grid">
+              {/* Danh sách slide. Mặc định liệt kê TỪNG slide của bản xuất, vì
+                  bài 18 mục xuất ra 74 slide thì 56 slide "(tiếp)" của V11.8
+                  không có cách nào mở ra xem trước khi xuất cả tệp. */}
+              <nav className="slide-list">
+                <div className="list-head">
+                  <h3>{listMode === "slide" ? `Danh sách slide · ${deck.length}` : `Danh sách mục · ${lesson.sections.length}`}</h3>
+                  <div className="list-switch">
+                    <button className={listMode === "slide" ? "on" : ""} onClick={() => setListMode("slide")}>
+                      Từng slide
+                    </button>
+                    <button className={listMode === "muc" ? "on" : ""} onClick={() => setListMode("muc")}>
+                      Theo mục
+                    </button>
+                  </div>
+                </div>
+
+                {listMode === "muc"
+                  ? lesson.sections.map((s, i) => {
+                      const count = errors.filter((e) => e.section === i + 1).length;
+                      const meta = s.phase ? PHASE_META[s.phase] : undefined;
+                      const slides = outline.filter((o) => o.sectionIndex === i).length;
+                      return (
+                        <button key={i} className={selected === i ? "selected" : ""}
+                                onClick={() => { pickSection(i); setEditing(false); }}>
+                          <b>{String(i + 1).padStart(2, "0")}</b>
+                          <span>
+                            {s.heading || "Chưa có tiêu đề"}
+                            <em style={{ color: meta ? `#${meta.color}` : undefined }}>
+                              {meta ? `${meta.icon} ${meta.label} · ` : ""}{slides} slide
+                            </em>
+                          </span>
+                          <i className={count ? "issue" : "pass"}>{count ? `${count} lỗi` : "Đạt"}</i>
+                        </button>
+                      );
+                    })
+                  : outline.map((o) => {
+                      const count = o.sectionIndex === undefined
+                        ? 0
+                        : errors.filter((e) => e.section === o.sectionIndex! + 1).length;
+                      const meta = o.phase ? PHASE_META[o.phase] : undefined;
+                      const cls = [
+                        deckIndex === o.index ? "selected" : "",
+                        o.auto ? "auto" : "",
+                        o.part ? "cont" : "",
+                      ].filter(Boolean).join(" ");
+                      return (
+                        <button key={o.index} className={cls} onClick={() => { pickSlide(o.index); setEditing(false); }}>
+                          <b>{String(o.index + 1).padStart(2, "0")}</b>
+                          <span>
+                            {o.label}
+                            <em style={{ color: meta ? `#${meta.color}` : undefined }}>
+                              {o.auto
+                                ? (o.kind === "divider" && meta ? `${meta.icon} ${meta.label}` : "Phần mềm tự dựng")
+                                : `Mục ${o.sectionIndex! + 1}${meta ? ` · ${meta.icon} ${meta.label}` : ""}`}
+                            </em>
+                          </span>
+                          {o.auto
+                            ? <i className="auto-tag">tự dựng</i>
+                            : <i className={count ? "issue" : "pass"}>{count ? `${count} lỗi` : "Đạt"}</i>}
+                        </button>
+                      );
+                    })}
               </nav>
 
               <section className="slide-canvas">
@@ -766,15 +1026,26 @@ export default function Page() {
                   <>
                     {/* Thanh công cụ: nút ghi rõ chữ, không dùng biểu tượng khó đoán */}
                     <div className="canvas-head">
-                      <span className="pos">Slide {deckIndex + 1}/{deck.length} · mục {selected + 1}/{lesson.sections.length}</span>
-                      <button onClick={() => moveSection(-1)} disabled={selected === 0}>↑ LÊN</button>
-                      <button onClick={() => moveSection(1)} disabled={selected === lesson.sections.length - 1}>↓ XUỐNG</button>
-                      <button onClick={duplicateSection}>⧉ NHÂN BẢN</button>
-                      <button className="danger" onClick={removeSection}>🗑 XOÁ SLIDE</button>
-                      <button className={editing ? "done" : "edit"} onClick={() => setEditing((x) => !x)}>
-                        {editing ? "✓ XONG" : "✎ SỬA SLIDE"}
+                      <span className="pos">
+                        Slide {deckIndex + 1}/{deck.length}
+                        {autoSlide
+                          ? ` · ${outline[deckIndex]?.label ?? ""}`
+                          : ` · mục ${selected + 1}/${lesson.sections.length}${(outline[deckIndex]?.parts ?? 1) > 1 ? ` · trang ${(outline[deckIndex]?.part ?? 0) + 1}/${outline[deckIndex]?.parts}` : ""}`}
+                      </span>
+                      {/* Bốn nút này tác động lên cả MỤC. Khi đang xem slide bìa /
+                          phân cách / kết thì mục đang chọn không nằm trên màn hình,
+                          bấm XOÁ MỤC là xoá mất thứ mình không nhìn thấy — nên chặn. */}
+                      <button onClick={() => moveSection(-1)} disabled={autoSlide || selected === 0}>↑ LÊN</button>
+                      <button onClick={() => moveSection(1)} disabled={autoSlide || selected === lesson.sections.length - 1}>↓ XUỐNG</button>
+                      <button onClick={duplicateSection} disabled={autoSlide}>⧉ NHÂN BẢN</button>
+                      <button className="danger" onClick={removeSection} disabled={autoSlide}>🗑 XOÁ MỤC</button>
+                      {/* Slide bìa / phân cách / kết không có nội dung để sửa — nút phải
+                          nói rõ lý do, đừng để giáo viên bấm rồi không thấy gì xảy ra. */}
+                      <button className="edit" onClick={() => setEditing(true)} disabled={autoSlide}
+                              title={autoSlide ? "Slide này do phần mềm tự dựng từ thông tin bài dạy" : "Mở ô sửa toàn màn hình"}>
+                        ✎ SỬA SLIDE
                       </button>
-                      <button className="primary" onClick={() => setPresenting(deckIndex)}>⛶ TOÀN MÀN HÌNH</button>
+                      <button className="primary" onClick={() => setPresenting(deckIndex)}>⛶ TRÌNH CHIẾU</button>
                     </div>
 
                     {/* Khung xem trước: đúng khổ 16:9 và đúng bố cục của file PowerPoint xuất ra */}
@@ -786,66 +1057,19 @@ export default function Page() {
                       theme={theme}
                     />
                     <p className="slide-hint">
-                      Đây là hình ảnh thật của slide khi trình chiếu — chữ tràn hay hình bị nhỏ đều thấy được ngay tại đây.
-                      Bấm <b>TOÀN MÀN HÌNH</b> để chiếu thử cả bài (mũi tên ←/→ chuyển slide, phím S xem ghi chú, Esc thoát).
+                      {autoSlide ? (
+                        <>
+                          Slide này phần mềm tự dựng từ <b>Thông tin bài dạy</b> ở cột bên trái (trang bìa, trang
+                          &quot;Yêu cầu cần đạt&quot;, trang phân cách giữa các pha, trang kết) — không có nội dung để sửa.
+                          Chọn một slide nội dung trong danh sách để bật nút <b>SỬA SLIDE</b>.
+                        </>
+                      ) : (
+                        <>
+                          Đây là hình ảnh thật của slide khi trình chiếu — chữ tràn hay hình bị nhỏ đều thấy được ngay tại đây.
+                          Bấm <b>TRÌNH CHIẾU</b> để chiếu thử cả bài (mũi tên ←/→ chuyển slide, phím S xem ghi chú, Esc thoát).
+                        </>
+                      )}
                     </p>
-
-                    {editing && (
-                      <div className="edit-panel">
-                        <b>Sửa nội dung slide {selected + 1}</b>
-                        <div className="edit-form">
-                          <label>Tiêu đề slide
-                            <input value={current.heading} onChange={(e) => updateSection({ heading: e.target.value })} />
-                          </label>
-                          <label>Nội dung (mỗi ý một dòng, công thức đặt trong $...$)
-                            <textarea rows={6} value={current.content} onChange={(e) => updateSection({ content: e.target.value })} />
-                          </label>
-                          <div className="edit-row">
-                            <label>Pha hoạt động
-                              <select value={current.phase ?? ""} onChange={(e) => updateSection({ phase: (e.target.value || undefined) as Section["phase"] })}>
-                                <option value="">— không đặt —</option>
-                                {PHASES.map(([key, m]) => <option key={key} value={key}>{m.label}</option>)}
-                              </select>
-                            </label>
-                            <label>Mức độ
-                              <select value={current.level ?? ""} onChange={(e) => updateSection({ level: (e.target.value || undefined) as Section["level"] })}>
-                                <option value="">—</option><option>NB</option><option>TH</option><option>VD</option><option>VDC</option>
-                              </select>
-                            </label>
-                            <label>Phút
-                              <input type="number" min="0" max="45" value={current.minutes ?? ""} onChange={(e) => updateSection({ minutes: Number(e.target.value) || undefined })} />
-                            </label>
-                          </div>
-                          <label>Ghi chú cho giáo viên (xuất vào Notes của PowerPoint)
-                            <textarea rows={4} value={current.notes ?? ""} onChange={(e) => updateSection({ notes: e.target.value })} />
-                          </label>
-                        </div>
-
-                        {current.visuals?.length ? (
-                          <div className="visual-strip">
-                            <b>Hình trên slide này</b>
-                            {current.visuals.map((v, j) => (
-                              <div className="visual-row" key={j}>
-                                <span>{j + 1}. {VISUAL_LABEL[v.type] || v.type}</span>
-                                <button onClick={() => setVisualDraft({ index: j, text: JSON.stringify(v, null, 2) })}>✎ SỬA DỮ LIỆU</button>
-                                <button className="danger" onClick={() => removeVisual(j)}>🗑 XOÁ HÌNH</button>
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
-
-                        {visualDraft && (
-                          <div className="visual-editor">
-                            <b>Sửa dữ liệu hình #{visualDraft.index + 1}</b>
-                            <textarea rows={12} value={visualDraft.text} onChange={(e) => setVisualDraft({ ...visualDraft, text: e.target.value })} spellCheck={false} />
-                            <div>
-                              <button onClick={saveVisualDraft}>Áp dụng</button>
-                              <button onClick={() => setVisualDraft(null)}>Huỷ</button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
 
                     {current.notes && !editing && (
                       <div className="notes-preview"><b>Ghi chú giáo viên</b><p>{current.notes}</p></div>
@@ -879,6 +1103,145 @@ export default function Page() {
                 )}
               </aside>
             </div>
+
+            {editing && current && !autoSlide && (
+              /**
+               * Ô SỬA TOÀN MÀN HÌNH (V11.9).
+               *
+               * V11.8 nhét ô sửa vào cột giữa, rộng chừng một phần ba màn hình:
+               * ô nội dung cao 6 dòng cho một slide có 5 ý kèm công thức, phải
+               * cuộn mới đọc hết, và khung xem trước thì trôi lên khỏi tầm mắt.
+               * Nay chữ nằm nửa trái, khung slide nửa phải và cập nhật ngay khi gõ.
+               */
+              <div className="edit-full" role="dialog" aria-label={`Sửa mục ${selected + 1}`}>
+                <header>
+                  <b>Sửa mục {selected + 1}/{lesson.sections.length} · slide {deckIndex + 1}/{deck.length}</b>
+                  <span className="ef-hint">Mọi thay đổi lưu ngay. Bấm Esc hoặc XONG để đóng.</span>
+                  <button className="done" onClick={() => { setEditing(false); setVisualDraft(null); }}>✓ XONG</button>
+                </header>
+
+                <div className="ef-body">
+                  <div className="ef-left">
+                    <label>Tiêu đề slide
+                      <input value={current.heading} onChange={(e) => updateSection({ heading: e.target.value })} />
+                    </label>
+                    <label className="grow">Nội dung (mỗi ý một dòng, công thức đặt trong $...$)
+                      <textarea value={current.content} onChange={(e) => updateSection({ content: e.target.value })} spellCheck={false} />
+                    </label>
+                    <div className="edit-row">
+                      <label>Pha hoạt động
+                        <select value={current.phase ?? ""} onChange={(e) => updateSection({ phase: (e.target.value || undefined) as Section["phase"] })}>
+                          <option value="">— không đặt —</option>
+                          {PHASES.map(([key, m]) => <option key={key} value={key}>{m.label}</option>)}
+                        </select>
+                      </label>
+                      <label>Mức độ
+                        <select value={current.level ?? ""} onChange={(e) => updateSection({ level: (e.target.value || undefined) as Section["level"] })}>
+                          <option value="">—</option><option>NB</option><option>TH</option><option>VD</option><option>VDC</option>
+                        </select>
+                      </label>
+                      <label>Phút
+                        <input type="number" min="0" max="45" value={current.minutes ?? ""} onChange={(e) => updateSection({ minutes: Number(e.target.value) || undefined })} />
+                      </label>
+                    </div>
+                    <label className="notes">Ghi chú cho giáo viên (xuất vào Notes của PowerPoint)
+                      <textarea value={current.notes ?? ""} onChange={(e) => updateSection({ notes: e.target.value })} />
+                    </label>
+                  </div>
+
+                  <div className="ef-right">
+                    <div className="ef-preview">
+                      <div className="ef-pager">
+                        <button onClick={() => pickSlide(Math.max(0, deckIndex - 1))} disabled={deckIndex === 0}>← Slide trước</button>
+                        <span>
+                          Slide {deckIndex + 1}/{deck.length}
+                          {(outline[deckIndex]?.parts ?? 1) > 1 && ` · trang ${(outline[deckIndex]?.part ?? 0) + 1}/${outline[deckIndex]?.parts} của mục này`}
+                        </span>
+                        <button onClick={() => pickSlide(Math.min(deck.length - 1, deckIndex + 1))} disabled={deckIndex >= deck.length - 1}>Slide sau →</button>
+                      </div>
+                      <SlideFrame spec={deck[deckIndex]} lesson={lesson} number={deckIndex + 1} meta={deckMeta} theme={theme} />
+                      <p className="ef-note">
+                        Khung này là hình ảnh thật của slide. Chữ nhiều quá thì phần mềm tự tách sang
+                        slide &quot;(tiếp)&quot; — bấm <b>Slide sau</b> để xem, cỡ chữ vẫn giữ 32–36 pt.
+                      </p>
+                    </div>
+
+                    <div className="ef-visuals">
+                      <b>Hình trên mục này</b>
+                      {current.visuals?.length ? current.visuals.map((v, j) => (
+                        <div className={`visual-row ${visualDraft?.index === j ? "on" : ""}`} key={j}>
+                          <span>{j + 1}. {VISUAL_LABEL[v.type] || v.type}</span>
+                          <button onClick={() => setVisualDraft({ index: j, text: JSON.stringify(v, null, 2) })}>✎ SỬA DỮ LIỆU</button>
+                          <button className="danger" onClick={() => removeVisual(j)}>🗑 XOÁ HÌNH</button>
+                        </div>
+                      )) : <p className="ef-empty">Mục này chưa có hình Toán nào.</p>}
+                    </div>
+
+                    {visualDraft && (() => {
+                      const kind = String((current.visuals?.[visualDraft.index] as { type?: string } | undefined)?.type ?? "");
+                      const guide = VISUAL_GUIDE[kind];
+                      const check = readVisualJson(visualDraft.text);
+                      const mau = sampleFor(kind);
+                      return (
+                        <div className="visual-editor">
+                          <div className="ve-head">
+                            <b>Dữ liệu hình #{visualDraft.index + 1} · {VISUAL_LABEL[kind] || kind}</b>
+                            <span className={check.ok ? "ve-ok" : "ve-bad"}>{check.ok ? "✓ Dữ liệu đọc được" : "⚠ Chưa đọc được"}</span>
+                          </div>
+
+                          <div className="ve-body">
+                            <textarea value={visualDraft.text} spellCheck={false}
+                                      onChange={(e) => setVisualDraft({ ...visualDraft, text: e.target.value })} />
+
+                            {/* Ô HƯỚNG DẪN — viết cho đúng loại hình đang sửa. */}
+                            <aside className="ve-guide">
+                              {guide ? (
+                                <>
+                                  <p className="ve-intro">{guide.intro}</p>
+                                  <table>
+                                    <tbody>
+                                      {guide.fields.map((f) => (
+                                        <tr key={f.name} className={f.required ? "req" : ""}>
+                                          <th><code>{f.name}</code>{f.required && <em>bắt buộc</em>}</th>
+                                          <td>{f.desc}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                  {guide.notes?.map((n, i) => <p className="ve-tip" key={i}>💡 {n}</p>)}
+                                </>
+                              ) : (
+                                <p className="ve-intro">Chưa có hướng dẫn riêng cho loại hình &quot;{kind}&quot;.</p>
+                              )}
+                              <details>
+                                <summary>Quy tắc chung khi gõ dữ liệu</summary>
+                                <ul>{COMMON_RULES.map((r, i) => <li key={i}>{r}</li>)}</ul>
+                              </details>
+                            </aside>
+                          </div>
+
+                          {!check.ok && <p className="ve-error">{check.error}</p>}
+
+                          <div className="ve-actions">
+                            <button className="done" onClick={saveVisualDraft} disabled={!check.ok}>Áp dụng</button>
+                            {mau && (
+                              <button onClick={() => setVisualDraft({ ...visualDraft, text: mau })}
+                                      title="Ghi đè ô dữ liệu bằng một ví dụ mẫu đầy đủ, rồi thầy chỉ việc sửa số">
+                                ⎘ Chèn mẫu
+                              </button>
+                            )}
+                            <button onClick={() => setVisualDraft({ index: visualDraft.index, text: JSON.stringify(current.visuals?.[visualDraft.index] ?? {}, null, 2) })}>
+                              ↺ Lấy lại dữ liệu cũ
+                            </button>
+                            <button className="ghost" onClick={() => setVisualDraft(null)}>Huỷ</button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Vùng dựng ẩn phục vụ xuất ảnh — mỗi hình có khoá riêng để bộ xuất ánh xạ chính xác */}
             <div className="export-staging" aria-hidden="true">
