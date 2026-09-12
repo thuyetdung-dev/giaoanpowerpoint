@@ -17,9 +17,15 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 
+/**
+ * suppressHydrationWarning trên thẻ <html>: một số tiện ích Chrome (ví dụ
+ * Material Design Lite) chèn class "mdl-js" vào <html> TRƯỚC khi React gắn kết,
+ * nên console báo lệch HTML giữa máy chủ và máy khách. Cảnh báo này vô hại
+ * nhưng lấp mất các lỗi thật, nên tắt riêng ở đúng thẻ bị ảnh hưởng.
+ */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="vi">
+    <html lang="vi" suppressHydrationWarning>
       <body>{children}</body>
     </html>
   );

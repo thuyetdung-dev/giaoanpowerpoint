@@ -15,12 +15,29 @@
  * 5. PHÔNG CHỮ. V10 dùng Aptos (chỉ có trên Microsoft 365 mới) => vỡ bố cục trên
  *    máy trường học. V11 lấy phông từ theme, mặc định Calibri/Times New Roman.
  * 6. THIẾU TRỢ NĂNG. V11 thêm altText cho mọi hình, đặt tiêu đề slide đúng chuẩn.
+ *
+ * ------------------------------------------------------------------------
+ * V11.6 — CỠ CHỮ ĐỌC ĐƯỢC TỪ CUỐI LỚP
+ * ------------------------------------------------------------------------
+ * 7. CHỮ QUÁ NHỎ. V11.5 tự hạ cỡ chữ xuống tới 17 pt để nhét cho vừa slide, và
+ *    còn bật `fit: "shrink"` để PowerPoint hạ tiếp. Nay mọi chữ nội dung nằm
+ *    trong 32–36 pt (lib/slides.ts, hằng TYPO); thừa chữ thì SANG SLIDE MỚI chứ
+ *    không thu nhỏ.
+ * 8. HÌNH BỊ BÓP. V11.5 nhét hình vào ô rộng 7,3 in bên phải khối chữ, nên chữ
+ *    bên trong bảng biến thiên chỉ còn 13–15 pt trên slide. Nay mỗi slide một
+ *    hình, hình trải hết bề ngang, và cỡ chữ trong hình được tính ngược từ ô
+ *    chứa (svgFontPx trong lib/slides.ts).
+ * 9. XEM TRƯỚC MỘT ĐẰNG, FILE MỘT NẺO. V11.5 dựng lại vòng lặp slide riêng ở
+ *    tệp này. Nay exportPptx đi theo đúng buildDeck() mà khung xem trước dùng.
  */
 
-import type { Lesson, Section, Visual } from "./types";
+import type { Lesson, Visual } from "./types";
 import { getTheme, PHASE_META, VISUAL_LABEL, type Theme } from "./themes";
 import { latexToUnicode, mixedLatexToUnicode } from "./latex";
-import { LAYOUT, visualBoxes } from "./slides";
+import {
+  LAYOUT, SLIDE_W_IN, TYPO, buildDeck, textBandBox, toBullets as splitBullets,
+  visualBox, visualImageBox, type Box,
+} from "./slides";
 
 const PPTX_VERSION = "4.0.1";
 
@@ -67,6 +84,9 @@ const STYLE_PROPS = [
   "font-family", "font-size", "font-weight", "font-style", "fill", "stroke",
   "stroke-width", "stroke-dasharray", "text-anchor", "opacity", "fill-opacity",
   "stroke-opacity", "dominant-baseline", "letter-spacing",
+  // V11.6: thiếu paint-order thì nét viền trắng quanh chữ (lớp .svg-halo) sẽ
+  // được vẽ ĐÈ lên phần tô, nhãn trên đồ thị hoá ra rỗng ruột khi xuất ảnh.
+  "paint-order", "stroke-linejoin",
 ];
 
 /** Sao chép style từ stylesheet vào thuộc tính inline để SVG tự đứng độc lập. */
@@ -141,22 +161,12 @@ export function toSlideText(raw: string): string {
   return mixedLatexToUnicode(raw).text;
 }
 
-/** Tách nội dung thành các gạch đầu dòng, giữ nguyên dấu âm trong công thức. */
-function toBullets(raw: string): string[] {
-  const text = toSlideText(raw);
-  const byLine = text.split(/\n+/).map((t) => t.trim()).filter(Boolean);
-  const source = byLine.length > 1 ? byLine : text.split(/(?:^|\s)[•·]\s|(?<=[.;])\s+(?=[A-ZĐÀ-Ỹ])/).map((t) => t.trim()).filter(Boolean);
-  return source.map((t) => t.replace(/^[-–—•·]\s*/, "").replace(/^\d+[.)]\s*/, "")).filter(Boolean).slice(0, 7);
-}
-
-/** Cỡ chữ tự thích ứng theo lượng nội dung — chống tràn mà không cần "shrink". */
-function bodyFontSize(chars: number, hasVisual: boolean): number {
-  const base = hasVisual ? 20 : 24;
-  if (chars < 120) return base + 2;
-  if (chars < 240) return base;
-  if (chars < 360) return base - 3;
-  if (chars < 480) return base - 5;
-  return base - 7;
+/**
+ * Tách nội dung thành các gạch đầu dòng, giữ nguyên dấu âm trong công thức.
+ * Dùng chung quy tắc với lib/slides.ts để xem trước và file xuất ra khớp nhau.
+ */
+export function toBullets(raw: string): string[] {
+  return splitBullets(toSlideText(raw));
 }
 
 /* ------------------------------------------------------------------ */
@@ -167,33 +177,61 @@ type Meta = { teacher?: string; school?: string; limitSlides?: number; includeNo
 
 function addChrome(slide: any, t: Theme, index: number, title: string, phase?: string) {
   slide.background = { color: t.bg };
-  slide.addShape("rect", { x: 0, y: 0, w: 13.333, h: 0.14, fill: { color: t.primary }, line: { transparency: 100 } });
+  const L = LAYOUT;
+  slide.addShape("rect", { x: L.topBar.x, y: L.topBar.y, w: L.topBar.w, h: L.topBar.h, fill: { color: t.primary }, line: { transparency: 100 } });
   const meta = phase ? PHASE_META[phase] : undefined;
-  slide.addShape("rect", { x: 0.58, y: 0.52, w: 0.13, h: 0.62, fill: { color: meta?.color || t.accent }, line: { transparency: 100 } });
+  slide.addShape("rect", {
+    x: L.accentBar.x, y: L.accentBar.y, w: L.accentBar.w, h: L.accentBar.h,
+    fill: { color: meta?.color || t.accent }, line: { transparency: 100 },
+  });
   slide.addText(title, {
-    x: 0.86, y: 0.44, w: meta ? 9.4 : 11.0, h: 0.68,
-    fontFace: t.headFont, fontSize: 26, bold: true, color: t.ink, margin: 0, valign: "mid", fit: "shrink",
+    x: L.title.x, y: L.title.y, w: meta ? L.title.wNarrow : L.title.wWide, h: L.title.h,
+    fontFace: t.headFont, fontSize: L.title.pt, bold: true, color: t.ink, margin: 0, valign: "mid", fit: "shrink",
   });
   if (meta) {
-    slide.addShape("roundRect", { x: 10.45, y: 0.56, w: 1.5, h: 0.4, rectRadius: 0.2, fill: { color: meta.color }, line: { transparency: 100 } });
+    slide.addShape("roundRect", {
+      x: L.badge.x, y: L.badge.y, w: L.badge.w, h: L.badge.h, rectRadius: 0.24,
+      fill: { color: meta.color }, line: { transparency: 100 },
+    });
     slide.addText(meta.label.toUpperCase(), {
-      x: 10.45, y: 0.56, w: 1.5, h: 0.4, fontFace: t.bodyFont, fontSize: 10, bold: true,
+      x: L.badge.x, y: L.badge.y, w: L.badge.w, h: L.badge.h, fontFace: t.bodyFont, fontSize: L.badge.pt, bold: true,
       color: "FFFFFF", align: "center", valign: "mid", margin: 0, charSpacing: 0.6,
     });
   }
   slide.addText(String(index).padStart(2, "0"), {
-    x: 12.15, y: 0.6, w: 0.6, h: 0.3, fontFace: t.bodyFont, fontSize: 11, bold: true,
+    x: L.pageNo.x, y: L.pageNo.y, w: L.pageNo.w, h: L.pageNo.h, fontFace: t.bodyFont, fontSize: L.pageNo.pt, bold: true,
     color: t.muted, align: "right", margin: 0,
   });
-  slide.addShape("line", { x: 0.58, y: 1.2, w: 12.17, h: 0, line: { color: t.line, width: 1 } });
+  slide.addShape("line", { x: L.divider.x, y: L.divider.y, w: L.divider.w, h: 0, line: { color: t.line, width: 1 } });
 }
 
 function addFooter(slide: any, t: Theme, lesson: Lesson) {
   slide.addText(`${lesson.subject || "Toán"} · Lớp ${lesson.grade || "THPT"}${lesson.book ? " · " + lesson.book : ""}`, {
-    x: 0.62, y: 7.12, w: 7, h: 0.24, fontFace: t.bodyFont, fontSize: 9, color: t.muted, margin: 0,
+    x: 0.62, y: LAYOUT.footer.y, w: 7, h: LAYOUT.footer.h, fontFace: t.bodyFont, fontSize: LAYOUT.footer.pt, color: t.muted, margin: 0,
   });
   slide.addText("LessonStudio V11", {
-    x: 10.4, y: 7.12, w: 2.3, h: 0.24, fontFace: t.bodyFont, fontSize: 9, color: t.muted, align: "right", margin: 0,
+    x: 10.4, y: LAYOUT.footer.y, w: 2.3, h: LAYOUT.footer.h, fontFace: t.bodyFont, fontSize: LAYOUT.footer.pt,
+    color: t.muted, align: "right", margin: 0,
+  });
+}
+
+/**
+ * Đặt một khối gạch đầu dòng lên slide ở ĐÚNG cỡ chữ đã chốt.
+ *
+ * Khác V11.5: không truyền `fit: "shrink"`. PowerPoint được phép thu nhỏ chữ là
+ * PowerPoint sẽ thu — và đó chính là cách bài giảng tụt về 18 pt mà giáo viên
+ * không hay biết. Ở đây lib/slides.ts đã tính trước số slide cần dùng, nên khối
+ * chữ chắc chắn vừa mà không phải thu.
+ */
+function addBullets(slide: any, t: Theme, bullets: string[], box: Box, pt: number) {
+  if (!bullets.length) return;
+  const body =
+    bullets.length > 1
+      ? bullets.map((b) => ({ text: b, options: { breakLine: true, bullet: { indent: 22 }, paraSpaceAfter: 10 } }))
+      : bullets[0];
+  slide.addText(body, {
+    x: box.x, y: box.y, w: box.w, h: box.h,
+    fontFace: t.bodyFont, fontSize: pt, color: t.ink, valign: "top", margin: 0.06, lineSpacingMultiple: 1.05,
   });
 }
 
@@ -221,176 +259,178 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
   pptx.lang = "vi-VN";
   pptx.theme = { headFontFace: t.headFont, bodyFontFace: t.bodyFont, lang: "vi-VN" };
 
-  /* --- Slide bìa --- */
-  const cover = pptx.addSlide();
-  cover.background = { color: t.coverBg };
-  cover.addShape("rect", { x: 0.72, y: 0.72, w: 0.18, h: 5.9, fill: { color: t.accent }, line: { transparency: 100 } });
-  cover.addText("BÀI GIẢNG MÔN TOÁN · THPT", {
-    x: 1.25, y: 1.0, w: 8, h: 0.36, fontFace: t.bodyFont, fontSize: 13, bold: true,
-    charSpacing: 2.4, color: t.accent, margin: 0,
-  });
-  cover.addText(toSlideText(lesson.title), {
-    x: 1.25, y: 1.6, w: 10.5, h: 1.7, fontFace: t.headFont, fontSize: 36, bold: true,
-    color: t.coverInk, margin: 0, valign: "mid", fit: "shrink",
-  });
-  cover.addShape("line", { x: 1.25, y: 3.6, w: 2.2, h: 0, line: { color: t.accent, width: 4 } });
-  cover.addText(`${lesson.subject || "Toán"}  |  Lớp ${lesson.grade || "THPT"}${lesson.book ? "  |  " + lesson.book : ""}`, {
-    x: 1.25, y: 3.95, w: 9, h: 0.42, fontFace: t.bodyFont, fontSize: 17, color: t.coverInk, margin: 0,
-  });
-  if (meta?.teacher)
-    cover.addText(`Giáo viên: ${meta.teacher}`, { x: 1.25, y: 4.55, w: 8, h: 0.36, fontFace: t.bodyFont, fontSize: 15, color: t.coverInk, margin: 0 });
-  if (meta?.school)
-    cover.addText(meta.school, { x: 1.25, y: 5.0, w: 9, h: 0.32, fontFace: t.bodyFont, fontSize: 13, color: t.coverInk, margin: 0 });
-  if (lesson.objectives?.length)
-    cover.addNotes(`Yêu cầu cần đạt:\n- ${lesson.objectives.join("\n- ")}`);
+  /**
+   * Dùng CHUNG danh sách slide với khung xem trước. V11.5 dựng lại vòng lặp
+   * riêng ở đây, nên xem trước một đằng, file xuất ra một nẻo. V11.6 chỉ có một
+   * nguồn duy nhất là buildDeck().
+   */
+  const deck = buildDeck(lesson, { teacher: meta?.teacher, school: meta?.school });
+  const limit = meta?.limitSlides || Number.POSITIVE_INFINITY;
 
-  /* --- Slide mục tiêu (nếu có) --- */
-  if (lesson.objectives?.length) {
-    const s = pptx.addSlide();
-    addChrome(s, t, 0, "Yêu cầu cần đạt");
-    addFooter(s, t, lesson);
-    s.addText(
-      lesson.objectives.map((o, i) => ({
-        text: toSlideText(o),
-        options: { breakLine: true, bullet: { indent: 20 }, paraSpaceAfter: 10, bold: i === 0 },
-      })),
-      { x: 0.9, y: 1.6, w: 11.6, h: 5, fontFace: t.bodyFont, fontSize: 20, color: t.ink, valign: "top" },
-    );
-  }
-
-  /* --- Slide nội dung --- */
   const stage = (root.querySelector(".export-staging") as HTMLElement) || root;
   const articles = Array.from(stage.querySelectorAll("article"));
-  const limit = meta?.limitSlides || Number.POSITIVE_INFINITY;
+
   let slideNo = 1;
-  let lastPhase: string | undefined;
+  let made = 0;
 
-  for (let si = 0; si < lesson.sections.length && slideNo <= limit; si++) {
-    const section = lesson.sections[si];
+  for (const spec of deck) {
+    if (made >= limit) break;
 
-    // slide chuyển pha hoạt động
-    if (section.phase && section.phase !== lastPhase && PHASE_META[section.phase]) {
-      const m = PHASE_META[section.phase];
+    /* --- Slide bìa --- */
+    if (spec.kind === "cover") {
+      const cover = pptx.addSlide();
+      cover.background = { color: t.coverBg };
+      cover.addShape("rect", { x: 0.72, y: 0.72, w: 0.18, h: 5.9, fill: { color: t.accent }, line: { transparency: 100 } });
+      cover.addText("BÀI GIẢNG MÔN TOÁN · THPT", {
+        x: 1.25, y: 0.95, w: 9, h: 0.42, fontFace: t.bodyFont, fontSize: TYPO.coverKicker, bold: true,
+        charSpacing: 2.4, color: t.accent, margin: 0,
+      });
+      cover.addText(toSlideText(lesson.title), {
+        x: 1.25, y: 1.55, w: 10.8, h: 1.9, fontFace: t.headFont, fontSize: TYPO.coverTitle, bold: true,
+        color: t.coverInk, margin: 0, valign: "mid", fit: "shrink",
+      });
+      cover.addShape("line", { x: 1.25, y: 3.7, w: 2.2, h: 0, line: { color: t.accent, width: 4 } });
+      cover.addText(`${lesson.subject || "Toán"}  |  Lớp ${lesson.grade || "THPT"}${lesson.book ? "  |  " + lesson.book : ""}`, {
+        x: 1.25, y: 4.05, w: 10, h: 0.5, fontFace: t.bodyFont, fontSize: TYPO.coverMeta, color: t.coverInk, margin: 0,
+      });
+      if (meta?.teacher)
+        cover.addText(`Giáo viên: ${meta.teacher}`, {
+          x: 1.25, y: 4.7, w: 9, h: 0.46, fontFace: t.bodyFont, fontSize: TYPO.coverTeacher, color: t.coverInk, margin: 0,
+        });
+      if (meta?.school)
+        cover.addText(meta.school, {
+          x: 1.25, y: 5.25, w: 10, h: 0.42, fontFace: t.bodyFont, fontSize: TYPO.coverSchool, color: t.coverInk, margin: 0,
+        });
+      if (lesson.objectives?.length) cover.addNotes(`Yêu cầu cần đạt:\n- ${lesson.objectives.join("\n- ")}`);
+      made++;
+      continue;
+    }
+
+    /* --- Slide yêu cầu cần đạt --- */
+    if (spec.kind === "objectives") {
+      const s = pptx.addSlide();
+      addChrome(s, t, 0, "Yêu cầu cần đạt");
+      addFooter(s, t, lesson);
+      const box = LAYOUT.textOnly.bullets;
+      addBullets(s, t, spec.items.map(toSlideText), { x: box.x - 1.4, y: box.y, w: box.w + 1.4, h: box.h }, spec.bodyPt);
+      made++;
+      continue;
+    }
+
+    /* --- Slide chuyển pha hoạt động --- */
+    if (spec.kind === "divider") {
+      const m = PHASE_META[spec.phase];
       const d = pptx.addSlide();
       d.background = { color: t.coverBg };
-      d.addShape("rect", { x: 0, y: 3.05, w: 13.333, h: 0.08, fill: { color: m.color }, line: { transparency: 100 } });
-      d.addText(m.label.toUpperCase(), {
-        x: 0, y: 3.2, w: 13.333, h: 0.9, fontFace: t.headFont, fontSize: 40, bold: true,
+      d.addShape("rect", { x: 0, y: 3.0, w: SLIDE_W_IN, h: 0.1, fill: { color: m?.color || t.accent }, line: { transparency: 100 } });
+      d.addText((m?.label || "Hoạt động").toUpperCase(), {
+        x: 0, y: 3.25, w: SLIDE_W_IN, h: 1.0, fontFace: t.headFont, fontSize: TYPO.divider, bold: true,
         color: t.coverInk, align: "center", margin: 0, charSpacing: 3,
       });
-      lastPhase = section.phase;
-      if (slideNo++ > limit) break;
+      made++;
+      continue;
     }
 
-    const visuals = section.visuals || [];
-    const nodes = collectVisualNodes(stage, articles, si);
-
-    // hình quá 2 -> tràn sang slide "(tiếp)" thay vì bị bỏ như V10
-    const chunks: number[][] = [];
-    if (!visuals.length) chunks.push([]);
-    else for (let i = 0; i < visuals.length; i += 2) chunks.push([i, i + 1].filter((k) => k < visuals.length));
-
-    for (let ci = 0; ci < chunks.length && slideNo <= limit; ci++) {
-      const slide = pptx.addSlide();
-      const heading = toSlideText(section.heading) + (ci ? " (tiếp)" : "");
-      addChrome(slide, t, slideNo++, heading, section.phase);
-      addFooter(slide, t, lesson);
-
-      const group = chunks[ci];
-      if (!group.length) {
-        // slide chỉ có chữ: căn giữa, chữ to
-        const bullets = toBullets(section.content);
-        const chars = toSlideText(section.content).length;
-        slide.addShape("roundRect", { x: 0.62, y: 1.5, w: 12.1, h: 5.1, rectRadius: 0.06, fill: { color: t.surface }, line: { color: t.line, width: 1 } });
-        slide.addText(String(si + 1).padStart(2, "0"), {
-          x: 0.9, y: 1.75, w: 1.1, h: 0.7, fontFace: t.headFont, fontSize: 34, bold: true, color: t.accent, margin: 0,
-        });
-        slide.addText(
-          bullets.length > 1
-            ? bullets.map((b) => ({ text: b, options: { breakLine: true, bullet: { indent: 20 }, paraSpaceAfter: 12 } }))
-            : bullets[0] || "",
-          { x: 2.05, y: 1.72, w: 10.2, h: 4.6, fontFace: t.bodyFont, fontSize: bodyFontSize(chars, false), color: t.ink, valign: "top", margin: 0.08 },
-        );
-      } else {
-        const chars = toSlideText(section.content).length;
-        if (ci === 0) {
-          slide.addShape("roundRect", { x: 0.62, y: 1.48, w: 4.15, h: 5.15, rectRadius: 0.06, fill: { color: t.surface }, line: { color: t.line, width: 1 } });
-          slide.addText("NỘI DUNG TRỌNG TÂM", {
-            x: 0.88, y: 1.76, w: 3.7, h: 0.26, fontFace: t.bodyFont, fontSize: 10.5, bold: true,
-            color: t.primary, charSpacing: 1.1, margin: 0,
-          });
-          const bullets = toBullets(section.content);
-          slide.addText(
-            bullets.length > 1
-              ? bullets.map((b) => ({ text: b, options: { breakLine: true, bullet: { indent: 18 }, paraSpaceAfter: 9 } }))
-              : bullets[0] || "",
-            { x: 0.88, y: 2.16, w: 3.65, h: 4.2, fontFace: t.bodyFont, fontSize: Math.min(18, bodyFontSize(chars, true)), color: t.ink, valign: "top", margin: 0.06 },
-          );
-        } else {
-          // Dùng chung toạ độ với khung xem trước (lib/slides.ts) để file xuất ra
-          // khớp từng milimét với những gì giáo viên nhìn thấy trên màn hình.
-          slide.addText("Tiếp theo phần trước", {
-            x: LAYOUT.contPanel.x, y: LAYOUT.contPanel.y, w: LAYOUT.contPanel.w, h: LAYOUT.contPanel.h,
-            fontFace: t.bodyFont, fontSize: LAYOUT.contPanel.pt, italic: true, color: t.muted, margin: 0,
-          });
-        }
-
-        const boxes = visualBoxes(ci, group.length, group.map((vi) => visuals[vi].type));
-        for (let k = 0; k < group.length; k++) {
-          const vi = group[k];
-          const node = nodes[vi];
-          const { x: boxX, y: boxY, w: boxW, h: boxH } = boxes[k];
-          slide.addText(VISUAL_LABEL[visuals[vi].type] || "HÌNH MINH HOẠ", {
-            x: boxX + 0.12, y: boxY + 0.04, w: 4, h: 0.24,
-            fontFace: t.bodyFont, fontSize: 9.5, bold: true, color: t.primary, charSpacing: 0.8, margin: 0,
-          });
-          const png = node ? await nodeToPng(node) : null;
-          if (!png) {
-            slide.addText("⚠ Không dựng được hình này. Hãy kiểm tra dữ liệu trong trình biên tập.", {
-              x: boxX + 0.12, y: boxY + 0.4, w: boxW - 0.3, h: 0.6, fontFace: t.bodyFont, fontSize: 12, color: "B91C1C", margin: 0,
-            });
-            continue;
-          }
-          const ratio = png.w / png.h;
-          let w = boxW - 0.3;
-          let h = w / ratio;
-          if (h > boxH - 0.42) { h = boxH - 0.42; w = h * ratio; }
-          slide.addImage({
-            data: png.data,
-            x: boxX + (boxW - w) / 2,
-            y: boxY + 0.34 + (boxH - 0.34 - h) / 2,
-            w, h,
-            altText: visualAlt(visuals[vi]),
-          });
-        }
-      }
-
-      // Ghi chú giáo viên -> Notes của PowerPoint
-      if (meta?.includeNotes !== false) {
-        const notes: string[] = [];
-        if (section.notes) notes.push(toSlideText(section.notes));
-        if (section.questions?.length) notes.push("Câu hỏi gợi mở:\n- " + section.questions.map(toSlideText).join("\n- "));
-        if (section.minutes) notes.push(`Thời lượng dự kiến: ${section.minutes} phút.`);
-        section.visuals?.filter((v) => v.type === "quiz").forEach((v: any) => {
-          notes.push(`Đáp án: ${String.fromCharCode(65 + v.answerIndex)}. ${toSlideText(v.options[v.answerIndex])}${v.explanation ? "\nGiải thích: " + toSlideText(v.explanation) : ""}`);
-        });
-        if (notes.length) slide.addNotes(notes.join("\n\n"));
-      }
-    }
-  }
-
-  /* --- Slide kết --- */
-  if (!Number.isFinite(limit)) {
-    const end = pptx.addSlide();
-    end.background = { color: t.coverBg };
-    end.addText("CẢM ƠN CÁC EM ĐÃ THAM GIA TIẾT HỌC", {
-      x: 0.8, y: 3.0, w: 11.7, h: 1.2, fontFace: t.headFont, fontSize: 30, bold: true,
-      color: t.coverInk, align: "center", margin: 0,
-    });
-    if (lesson.keywords?.length)
-      end.addText("Từ khoá: " + lesson.keywords.join(" · "), {
-        x: 0.8, y: 4.2, w: 11.7, h: 0.5, fontFace: t.bodyFont, fontSize: 14, color: t.accent, align: "center", margin: 0,
+    /* --- Slide kết --- */
+    if (spec.kind === "end") {
+      if (Number.isFinite(limit)) break; // bản xem thử không cần slide kết
+      const end = pptx.addSlide();
+      end.background = { color: t.coverBg };
+      end.addText("CẢM ƠN CÁC EM ĐÃ THAM GIA TIẾT HỌC", {
+        x: 0.8, y: 2.9, w: 11.7, h: 1.4, fontFace: t.headFont, fontSize: TYPO.endTitle, bold: true,
+        color: t.coverInk, align: "center", margin: 0,
       });
+      if (lesson.keywords?.length)
+        end.addText("Từ khoá: " + lesson.keywords.join(" · "), {
+          x: 0.8, y: 4.45, w: 11.7, h: 0.6, fontFace: t.bodyFont, fontSize: TYPO.endKeywords, color: t.accent, align: "center", margin: 0,
+        });
+      made++;
+      continue;
+    }
+
+    /* --- Slide nội dung --- */
+    const section = spec.section;
+    const slide = pptx.addSlide();
+    const heading = toSlideText(section.heading) + (spec.part ? " (tiếp)" : "");
+    addChrome(slide, t, slideNo++, heading, section.phase);
+    addFooter(slide, t, lesson);
+
+    const bullets = spec.bullets.map(toSlideText);
+
+    if (!spec.visual) {
+      // Slide chỉ có chữ: khung nền trải hết bề ngang, chữ 32–36 pt.
+      slide.addShape("roundRect", {
+        x: LAYOUT.textOnly.box.x, y: LAYOUT.textOnly.box.y, w: LAYOUT.textOnly.box.w, h: LAYOUT.textOnly.box.h,
+        rectRadius: 0.06, fill: { color: t.surface }, line: { color: t.line, width: 1 },
+      });
+      if (spec.showNumber) {
+        slide.addText(String(spec.sectionIndex + 1).padStart(2, "0"), {
+          x: LAYOUT.textOnly.number.x, y: LAYOUT.textOnly.number.y, w: LAYOUT.textOnly.number.w, h: LAYOUT.textOnly.number.h,
+          fontFace: t.headFont, fontSize: LAYOUT.textOnly.number.pt, bold: true, color: t.accent, margin: 0,
+        });
+      }
+      const box = spec.showNumber
+        ? LAYOUT.textOnly.bullets
+        : { x: LAYOUT.textOnly.box.x + 0.33, y: LAYOUT.textOnly.bullets.y, w: LAYOUT.textOnly.box.w - 0.66, h: LAYOUT.textOnly.bullets.h };
+      addBullets(slide, t, bullets, box, spec.bodyPt);
+    } else {
+      // Slide có hình: chữ ở trên (nếu có), hình trải hết bề ngang ở dưới.
+      if (spec.bandH > 0 && bullets.length) {
+        const band = textBandBox(spec.bandH);
+        slide.addShape("roundRect", {
+          x: band.panel.x, y: band.panel.y, w: band.panel.w, h: band.panel.h,
+          rectRadius: 0.06, fill: { color: t.surface }, line: { color: t.line, width: 1 },
+        });
+        addBullets(slide, t, bullets, band.bullets, spec.bodyPt);
+      }
+      // V11.5 in thêm dòng "Tiếp theo phần trước" ở đây. Bỏ đi: trên slide chỉ có
+      // hình nó nằm chồng lên nhãn loại hình, mà tiêu đề đã có chữ "(tiếp)".
+
+      const v = spec.visual.visual;
+      const box = visualBox(spec.bandH);
+      const img = visualImageBox(box);
+      slide.addText(VISUAL_LABEL[v.type] || "HÌNH MINH HOẠ", {
+        x: box.x + 0.15, y: box.y, w: 6, h: 0.26,
+        fontFace: t.bodyFont, fontSize: TYPO.visualLabel, bold: true, color: t.primary, charSpacing: 0.8, margin: 0,
+      });
+
+      const nodes = collectVisualNodes(stage, articles, spec.sectionIndex);
+      const node = nodes[spec.visual.index];
+      const png = node ? await nodeToPng(node) : null;
+      if (!png) {
+        slide.addText("⚠ Không dựng được hình này. Hãy kiểm tra dữ liệu trong trình biên tập.", {
+          x: img.x, y: img.y + 0.3, w: img.w, h: 0.8, fontFace: t.bodyFont, fontSize: TYPO.warn, color: "B91C1C", margin: 0,
+        });
+      } else {
+        const ratio = png.w / png.h;
+        let w = img.w;
+        let h = w / ratio;
+        if (h > img.h) { h = img.h; w = h * ratio; }
+        slide.addImage({
+          data: png.data,
+          x: img.x + (img.w - w) / 2,
+          y: img.y + (img.h - h) / 2,
+          w, h,
+          altText: visualAlt(v),
+        });
+      }
+    }
+
+    // Ghi chú giáo viên -> Notes của PowerPoint (chỉ trên slide đầu của mục)
+    if (meta?.includeNotes !== false && spec.part === 0) {
+      const notes: string[] = [];
+      if (section.notes) notes.push(toSlideText(section.notes));
+      if (section.questions?.length) notes.push("Câu hỏi gợi mở:\n- " + section.questions.map(toSlideText).join("\n- "));
+      if (section.minutes) notes.push(`Thời lượng dự kiến: ${section.minutes} phút.`);
+      section.visuals?.filter((v) => v.type === "quiz").forEach((v: any) => {
+        notes.push(
+          `Đáp án: ${String.fromCharCode(65 + v.answerIndex)}. ${toSlideText(v.options[v.answerIndex])}` +
+            (v.explanation ? "\nGiải thích: " + toSlideText(v.explanation) : ""),
+        );
+      });
+      if (notes.length) slide.addNotes(notes.join("\n\n"));
+    }
+    made++;
   }
 
   const suffix = Number.isFinite(limit) ? "XEM_THU" : "BAI_GIANG";
@@ -485,17 +525,19 @@ export function exportHtml(root: HTMLElement, lesson: Lesson) {
 <style>
 :root{--ink:#${t.ink};--muted:#${t.muted};--line:#${t.line};--primary:#${t.primary};--accent:#${t.accent};--surface:#${t.surface}}
 *{box-sizing:border-box}
-body{margin:0;background:#0f1720;color:var(--ink);font:18px/1.6 ${t.bodyFont},system-ui,sans-serif}
+body{margin:0;background:#0f1720;color:var(--ink);font:26px/1.55 ${t.bodyFont},system-ui,sans-serif}
 .deck{height:100vh;display:grid;place-items:center;padding:24px}
 article{display:none;background:#fff;width:min(1280px,96vw);aspect-ratio:16/9;padding:44px 56px;border-radius:14px;overflow:auto;box-shadow:0 30px 80px #0008}
 article.active{display:block}
-h3{font:700 30px/1.2 ${t.headFont},Georgia,serif;margin:0 0 18px;color:var(--primary);border-bottom:3px solid var(--accent);padding-bottom:12px}
-p{font-size:22px}
-.visual-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;margin-top:20px}
+h3{font:700 40px/1.2 ${t.headFont},Georgia,serif;margin:0 0 18px;color:var(--primary);border-bottom:3px solid var(--accent);padding-bottom:12px}
+p,li{font-size:30px}
+.visual-card>label{font-size:16px}
+.visual-grid{display:block;margin-top:20px}
 .visual-card{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--surface);overflow:auto}
 svg{max-width:100%;height:auto}
-.data-table{border-collapse:collapse;width:100%}.data-table th,.data-table td{border:1px solid var(--line);padding:8px 12px}
-.quiz-option{display:flex;gap:10px;width:100%;text-align:left;margin:6px 0;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit;cursor:pointer}
+.data-table{border-collapse:collapse;width:100%;font-size:28px}.data-table th,.data-table td{border:1px solid var(--line);padding:10px 14px}
+.quiz-question{font-size:32px;font-weight:600}
+.quiz-option{display:flex;gap:12px;width:100%;text-align:left;margin:8px 0;padding:14px 18px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit;font-size:28px;cursor:pointer}
 .quiz-option.correct{background:#e7f7ef;border-color:#0e8a72}.quiz-option.wrong{background:#fdecec;border-color:#b91c1c}
 nav{position:fixed;inset:auto 0 18px 0;display:flex;gap:12px;justify-content:center}
 nav button{border:0;border-radius:999px;padding:10px 20px;background:#ffffff22;color:#fff;font:inherit;cursor:pointer}

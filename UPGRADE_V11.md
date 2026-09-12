@@ -1,8 +1,11 @@
 # LessonStudio V11 — Hướng dẫn áp dụng bản nâng cấp
 
-Bản này được viết đè lên mã nguồn V10 và **đã build + kiểm thử thành công**
-(`tsc --noEmit` sạch, `next build` thành công, 26 unit test đạt, xuất thử
-PowerPoint 25 slide / 25 ghi chú / 15 hình mở được bằng LibreOffice).
+Bản này được viết đè lên mã nguồn V10 và **đã build + kiểm thử thành công**.
+
+**Bản hiện tại: V11.6** — `next build` sạch, 39/39 kiểm thử đạt, 19/19 loại hình
+Toán có chữ ≥ 32 pt khi in lên slide, xuất thử 31 slide mở được bằng LibreOffice
+và không khối chữ nào tràn khung. Xem mục 5 để biết cách tự chạy lại các phép đo
+này.
 
 ## 1. Tệp mới và tệp thay đổi
 
@@ -22,7 +25,9 @@ PowerPoint 25 slide / 25 ghi chú / 15 hình mở được bằng LibreOffice).
 | `app/page.tsx` | viết lại | Tự lưu, nút dừng, sửa được dữ liệu hình, sắp xếp slide, sửa ghi chú |
 | `app/api/generate/route.ts` | viết lại | Không còn là mã chết: dùng cho chế độ khoá dùng chung + chặn lạm dụng |
 | `app/v11.css` | **mới** | Cỡ chữ đạt chuẩn tiếp cận + style cho hình mới |
-| `app/layout.tsx`, `next.config.ts` | sửa | Nạp CSS mới; xử lý `node:fs` của pptxgenjs |
+| `app/layout.tsx`, `next.config.ts` | sửa | Nạp CSS mới; xử lý `node:fs` của pptxgenjs; V11.6 thêm `suppressHydrationWarning` cho thẻ `<html>` để dẹp cảnh báo do tiện ích Chrome chèn class `mdl-js` |
+| `lib/slides.ts` | viết lại ở V11.6 | Thang cỡ chữ `TYPO`, bố cục "chữ trên – hình dưới", chia slide theo sức chứa, `svgFontPx()` |
+| `scripts/` | **mới ở V11.6** | Ba script đo cỡ chữ và xuất thử PowerPoint (xem mục 5) |
 | `types/vendor.d.ts` | sửa | Khai báo module bổ sung |
 
 Tệp V10 gốc được giữ nguyên trong thư mục `_v10_backup/` của gói bàn giao.
@@ -59,13 +64,88 @@ echo '{"type":"module"}' > _build/package.json
 node tests.mjs
 ```
 
-## 5. Việc nên làm tiếp (chưa nằm trong bản này)
+## 5. V11.6 — Cỡ chữ đọc được từ cuối lớp
+
+### Vấn đề
+
+Mở tệp PowerPoint do V11.5 xuất ra và đo lại, kết quả như sau:
+
+| Thành phần | V11.5 | V11.6 |
+|---|---|---|
+| Nội dung slide chỉ có chữ | 17–24 pt | **32–36 pt** |
+| Nội dung khi slide có hình | 18 pt (cột trái rộng 3,65 in) | **32–36 pt** |
+| Tiêu đề slide | 26 pt | 32 pt |
+| Chữ bên trong bảng biến thiên, đồ thị, quiz | **13–15 pt** | **32–34 pt** |
+
+Dòng cuối là chỗ nặng nhất. Hình được vẽ trong khung SVG rồi bị thu cho vừa ô
+trên slide, nên chữ bên trong bị thu theo. Bảng biến thiên khung 860 px nhét vào
+ô rộng 7,3 in có hệ số thu 0,61 — nhãn 22 px hoá ra 13 pt. Ở khoảng cách 8–10 m
+(bàn cuối của một lớp thường), 13 pt là không đọc được.
+
+### Cách sửa
+
+Đảo lại thứ tự ràng buộc: **cỡ chữ là điều kiện cứng, bố cục phải chiều theo.**
+
+1. `lib/slides.ts` có hằng `TYPO`, trong đó `bodyMin = 32` là ngưỡng sàn cho mọi
+   chữ nội dung. Thừa chữ thì **sang slide mới**, không thu nhỏ chữ. Cũng đã bỏ
+   `fit: "shrink"` ở các khối nội dung — để đó là PowerPoint tự hạ cỡ chữ mà
+   giáo viên không hay biết.
+2. Bỏ bố cục "chữ trái – hình phải". Chữ trải hết bề ngang ở trên, hình nằm dưới
+   và cũng trải hết bề ngang. Mỗi slide nhiều nhất **một** hình.
+3. Hình chỉ ở chung slide với chữ khi nó đủ dẹt để vẫn chiếm trọn bề ngang —
+   `bandRoomFor()` tính phần chiều cao còn lại. Hình cao (đồ thị, quiz, bảng số
+   liệu) chiếm trọn một slide riêng; đó chính là lý do chữ bên trong đủ to.
+4. Cỡ chữ trong hình được tính **ngược** từ ô chứa bằng `svgFontPx(W, H)`, chứ
+   không đặt cứng bằng px. Các lớp CSS trong `app/v11.css` chuyển sang đơn vị
+   `em` để ăn theo cỡ gốc đó.
+5. `exportPptx()` nay đi theo đúng `buildDeck()` mà khung xem trước dùng. Trước
+   đây hai nơi dựng slide bằng hai vòng lặp riêng, nên xem trước một đằng, tệp
+   xuất ra một nẻo.
+
+Hệ quả: cùng một bài giảng, số slide tăng khoảng 25–30 % (bài mẫu: 25 → 31
+slide). Đó là cái giá phải trả và là cái giá đúng — một slide không đọc được thì
+có ít slide cũng vô nghĩa.
+
+### Cách tự kiểm chứng
+
+Ba script trong `scripts/` (không tham gia bản dựng, đã ghi trong `.vercelignore`):
+
+```bash
+npm i -D playwright esbuild        # chỉ cần cho việc kiểm chứng, không phải để chạy web
+
+# 1. Đo cỡ chữ bên trong cả 19 loại hình Toán
+npx esbuild scripts/_entry.tsx --bundle --outfile=/tmp/vis-bundle.js \
+    --format=iife --jsx=automatic --define:process.env.NODE_ENV='"production"'
+node scripts/measure-visuals.mjs      # in bảng kết quả + ảnh dựng thử vào .measure/
+
+# 2. Xuất thật một tệp .pptx bằng chính hàm exportPptx của ứng dụng
+npx esbuild scripts/_export-entry.tsx --bundle --outfile=/tmp/export-bundle.js \
+    --format=iife --jsx=automatic --define:process.env.NODE_ENV='"production"'
+node scripts/build-sample-pptx.mjs
+
+# 3. Mở tệp đó ra đo lại cỡ chữ từng slide
+python3 scripts/check-pptx.py .measure/bai_giang_V11_6.pptx
+```
+
+Kết quả trên bản này: **19/19 loại hình đạt**, **31/31 slide có mọi chữ nội dung
+≥ 32 pt**, không khối chữ nào tràn khung.
+
+### Sửa cỡ chữ theo ý mình
+
+Muốn đổi ngưỡng, sửa `TYPO.bodyMin` và `TYPO.bodyMax` trong `lib/slides.ts`
+(nhớ sửa cả `bodySteps`). Nâng ngưỡng lên thì số slide tăng thêm; hạ xuống thì
+ngược lại. Sau khi sửa, chạy lại ba script ở trên — đừng tin mắt thường, vì chữ
+trong hình bị thu theo hệ số mà mắt không ước lượng được.
+
+## 6. Việc nên làm tiếp (chưa nằm trong bản này)
 
 1. Bật `"strict": true` trong `tsconfig.json` rồi sửa dần các cảnh báo.
 2. Thêm ESLint config (`next lint` hiện không có cấu hình).
 3. Trình sửa hình trực quan (kéo thả mốc bảng biến thiên) thay cho ô JSON.
 4. Nhúng GeoGebra/Desmos cho các hình cần tương tác động.
 5. Thư viện bài giảng dùng chung cho tổ chuyên môn (cần cơ sở dữ liệu).
+6. Hệ trục Oxyz vẽ hơi nhỏ so với khung (chữ đã đủ to, chỉ là hình chưa dùng hết
+   chỗ) — nên chỉnh lại tỉ lệ trong `components/MathVisualsExtra.tsx`.
 
 ---
 

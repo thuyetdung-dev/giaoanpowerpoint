@@ -15,6 +15,7 @@ import type {
   NumberLineVisual, RegionVisual, Solid3DVisual, OxyzVisual, VectorVisual,
   VennVisual, TableVisual, QuizVisual,
 } from "@/lib/types";
+import { NL_HEAD, NL_ROW_H, NL_W, svgFontPx } from "@/lib/slides";
 
 const PALETTE = ["#17324D", "#E4572E", "#0E8A72", "#F2A541", "#6C63A6", "#3C8DAD", "#B91C1C", "#1D4ED8"];
 
@@ -32,19 +33,23 @@ export function isExtraVisual(v: Visual): boolean {
 /* ------------------------------------------------------------------ */
 
 function StatChart({ v }: { v: StatChartVisual }) {
-  const W = 720, H = 420, p = 56;
+  const W = 880, H = 470;
+  // Lề trái phải chứa nổi nhãn trục tung ở cỡ chữ mới (ví dụ "100"), nếu không
+  // số bị đẩy ra ngoài khung — 56 px của V11.5 vừa đủ cho chữ 13 px mà thôi.
+  const p = 118;
   const series = v.series ?? [];
   const labels = v.labels ?? [];
 
   if (v.chart === "pie") {
     const values = series[0]?.values ?? [];
     const total = values.reduce((a, b) => a + b, 0) || 1;
-    const cx = 250, cy = H / 2, r = 140;
+    const fsPie = svgFontPx(W, H);
+    const cx = 290, cy = H / 2 + fsPie * 0.5, r = 170;
     let acc = -Math.PI / 2;
     return (
-      <svg className="stat-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={v.title || "Biểu đồ hình quạt"}>
+      <svg className="stat-svg" viewBox={`0 0 ${W} ${H}`} role="img" style={{ fontSize: svgFontPx(W, H) }} aria-label={v.title || "Biểu đồ hình quạt"}>
         <rect width={W} height={H} fill="#fff" rx="12" />
-        {v.title && <text x={W / 2} y="28" textAnchor="middle" className="chart-title">{v.title}</text>}
+        {v.title && <text x={W / 2} y={fsPie * 1.15} textAnchor="middle" className="chart-title">{v.title}</text>}
         {values.map((val, i) => {
           const ang = (val / total) * Math.PI * 2;
           const x1 = cx + r * Math.cos(acc), y1 = cy + r * Math.sin(acc);
@@ -56,16 +61,16 @@ function StatChart({ v }: { v: StatChartVisual }) {
           return (
             <g key={i}>
               <path d={d} fill={PALETTE[i % PALETTE.length]} stroke="#fff" strokeWidth="2" />
-              <text x={cx + r * 0.65 * Math.cos(mid)} y={cy + r * 0.65 * Math.sin(mid)}
+              <text x={cx + r * 0.62 * Math.cos(mid)} y={cy + r * 0.62 * Math.sin(mid) + fsPie / 3}
                     textAnchor="middle" className="chart-slice">{pct}%</text>
             </g>
           );
         })}
         <g className="chart-legend">
           {labels.map((l, i) => (
-            <g key={i} transform={`translate(455, ${90 + i * 28})`}>
-              <rect width="16" height="16" rx="3" fill={PALETTE[i % PALETTE.length]} />
-              <text x="24" y="13">{l}</text>
+            <g key={i} transform={`translate(${cx + r + 60}, ${cy - ((labels.length - 1) * fsPie * 1.6) / 2 + i * fsPie * 1.6})`}>
+              <rect width={fsPie * 0.85} height={fsPie * 0.85} y={-fsPie * 0.7} rx="3" fill={PALETTE[i % PALETTE.length]} />
+              <text x={fsPie * 1.3}>{l}</text>
             </g>
           ))}
         </g>
@@ -77,17 +82,26 @@ function StatChart({ v }: { v: StatChartVisual }) {
   const isRow = v.chart === "bar";
   const flatMax = Math.max(1, ...series.flatMap((s) => s.values));
   const niceMax = Math.ceil(flatMax / 5) * 5 || 1;
-  const plotW = W - p - 24, plotH = H - p - 46;
-  const x0 = p, y0 = H - 46;
+  /**
+   * V11.6: chữ trong hình to gấp gần ba lần nên mọi khoảng chừa cũ đều hụt —
+   * tên trục đè lên tiêu đề, nhãn cột đè lên trục hoành. Các mốc dưới đây tính
+   * theo chính cỡ chữ (fs) chứ không phải theo số px cố định, nên còn đúng cả
+   * khi sau này khung vẽ thay đổi.
+   */
+  const fs = svgFontPx(W, H);
+  const titleH = v.title ? fs * 1.5 : fs * 0.4;
+  const bottomH = fs * (v.xLabel ? 3.0 : 1.9) + (series.length > 1 ? fs * 1.6 : 0);
+  const plotW = W - p - fs * 0.8, plotH = H - titleH - bottomH;
+  const x0 = p, y0 = H - bottomH;
 
   const groups = isHistogram ? (v.bins?.length ? v.bins.length - 1 : labels.length) : labels.length;
   const groupW = plotW / Math.max(1, groups);
   const barW = isHistogram ? groupW : (groupW * 0.68) / Math.max(1, series.length);
 
   return (
-    <svg className="stat-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={v.title || "Biểu đồ thống kê"}>
+    <svg className="stat-svg" viewBox={`0 0 ${W} ${H}`} role="img" style={{ fontSize: svgFontPx(W, H) }} aria-label={v.title || "Biểu đồ thống kê"}>
       <rect width={W} height={H} fill="#fff" rx="12" />
-      {v.title && <text x={W / 2} y="26" textAnchor="middle" className="chart-title">{v.title}</text>}
+      {v.title && <text x={W / 2} y={fs * 1.15} textAnchor="middle" className="chart-title">{v.title}</text>}
       {/* lưới ngang + trục giá trị */}
       {Array.from({ length: 6 }, (_, i) => {
         const val = (niceMax * i) / 5;
@@ -95,14 +109,16 @@ function StatChart({ v }: { v: StatChartVisual }) {
         return (
           <g key={i}>
             <line x1={x0} x2={x0 + plotW} y1={y} y2={y} stroke="#E2EAF1" />
-            <text x={x0 - 10} y={y + 4} textAnchor="end" className="chart-tick">{Number(val.toFixed(2))}</text>
+            <text x={x0 - fs * 0.4} y={y + fs / 3} textAnchor="end" className="chart-tick">{Number(val.toFixed(2))}</text>
           </g>
         );
       })}
       <line x1={x0} x2={x0 + plotW} y1={y0} y2={y0} stroke="#263746" strokeWidth="1.6" />
       <line x1={x0} x2={x0} y1={y0} y2={y0 - plotH} stroke="#263746" strokeWidth="1.6" />
-      {v.yLabel && <text x={x0 - 40} y={y0 - plotH - 12} className="chart-axis">{v.yLabel}</text>}
-      {v.xLabel && <text x={x0 + plotW} y={H - 10} textAnchor="end" className="chart-axis">{v.xLabel}</text>}
+      {/* Tên trục tung đặt NGAY TRÊN đầu trục, canh trái — V11.5 đặt lệch sang
+          trái 40 px nên ở cỡ chữ lớn nó chạy ra ngoài khung và đè lên tiêu đề. */}
+      {v.yLabel && <text x={8} y={titleH + fs * 1.85} textAnchor="start" className="chart-axis svg-halo">{v.yLabel}</text>}
+      {v.xLabel && <text x={x0 + plotW} y={y0 + fs * 2.6} textAnchor="end" className="chart-axis">{v.xLabel}</text>}
 
       {v.chart === "line"
         ? series.map((s, si) => {
@@ -128,7 +144,7 @@ function StatChart({ v }: { v: StatChartVisual }) {
                         fill={s.color || PALETTE[si % PALETTE.length]}
                         stroke={isHistogram ? "#fff" : "none"} rx={isHistogram ? 0 : 3} />
                   {v.showValues !== false && (
-                    <text x={bx + barW / 2} y={y0 - h - 6} textAnchor="middle" className="chart-value">{val}</text>
+                    <text x={bx + barW / 2} y={y0 - h - fs * 0.35} textAnchor="middle" className="chart-value">{val}</text>
                   )}
                 </g>
               );
@@ -138,18 +154,18 @@ function StatChart({ v }: { v: StatChartVisual }) {
       {/* nhãn trục hoành */}
       {isHistogram && v.bins?.length
         ? v.bins.map((b, i) => (
-            <text key={i} x={x0 + groupW * i} y={y0 + 20} textAnchor="middle" className="chart-tick">{b}</text>
+            <text key={i} x={x0 + groupW * i} y={y0 + fs * 1.15} textAnchor="middle" className="chart-tick">{b}</text>
           ))
         : labels.map((l, i) => (
-            <text key={i} x={x0 + groupW * (i + 0.5)} y={y0 + 20} textAnchor="middle" className="chart-tick">{l}</text>
+            <text key={i} x={x0 + groupW * (i + 0.5)} y={y0 + fs * 1.15} textAnchor="middle" className="chart-tick">{l}</text>
           ))}
 
       {series.length > 1 && (
         <g className="chart-legend">
           {series.map((s, i) => (
-            <g key={i} transform={`translate(${x0 + i * 150}, ${H - 8})`}>
-              <rect width="14" height="14" y="-11" rx="3" fill={s.color || PALETTE[i % PALETTE.length]} />
-              <text x="20">{s.name || `Nhóm ${i + 1}`}</text>
+            <g key={i} transform={`translate(${x0 + i * (W / Math.max(2, series.length))}, ${H - fs * 0.4})`}>
+              <rect width={fs * 0.8} height={fs * 0.8} y={-fs * 0.7} rx="3" fill={s.color || PALETTE[i % PALETTE.length]} />
+              <text x={fs * 1.2}>{s.name || `Nhóm ${i + 1}`}</text>
             </g>
           ))}
         </g>
@@ -164,43 +180,51 @@ function StatChart({ v }: { v: StatChartVisual }) {
 /* ------------------------------------------------------------------ */
 
 function BoxPlot({ v }: { v: BoxPlotVisual }) {
-  const W = 720, H = 120 + v.groups.length * 78, p = 110;
+  /**
+   * V11.5 ghi cả năm con số (min, Q₁, Q₂, Q₃, max) ngay cạnh hộp. Ở cỡ chữ 13 px
+   * còn tạm đọc được; ở cỡ 33 px thì "Q₁=5.5" và "Q₂=7" chồng lên nhau thành
+   * một vệt đen. V11.6 chỉ ghi min và max ở hai đầu râu, còn ba tứ phân vị xếp
+   * so le trên – dưới – trên để luôn có khoảng hở.
+   */
+  const W = 860, H = 140 + v.groups.length * 94, p = 150;
+  const fs = svgFontPx(W, H);
   const all = v.groups.flatMap((g) => [g.min, g.max, ...(g.outliers ?? [])]);
   const lo = Math.min(...all), hi = Math.max(...all);
   const pad = (hi - lo) * 0.08 || 1;
-  const sx = (x: number) => p + ((x - (lo - pad)) * (W - p - 40)) / (hi - lo + 2 * pad);
+  const left = p + fs * 0.6;
+  const sx = (x: number) => left + ((x - (lo - pad)) * (W - left - fs * 1.6)) / (hi - lo + 2 * pad);
 
   return (
-    <svg className="stat-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={v.title || "Biểu đồ hộp"}>
+    <svg className="stat-svg" viewBox={`0 0 ${W} ${H}`} role="img" style={{ fontSize: svgFontPx(W, H) }} aria-label={v.title || "Biểu đồ hộp"}>
       <rect width={W} height={H} fill="#fff" rx="12" />
-      {v.title && <text x={W / 2} y="26" textAnchor="middle" className="chart-title">{v.title}</text>}
+      {v.title && <text x={W / 2} y={fs * 1.15} textAnchor="middle" className="chart-title">{v.title}</text>}
       {v.groups.map((g, i) => {
-        const cy = 66 + i * 78;
+        const cy = fs * 1.5 + 94 * i + 47;
         const c = PALETTE[i % PALETTE.length];
         return (
           <g key={i}>
-            <text x={p - 14} y={cy + 5} textAnchor="end" className="chart-tick">{g.name}</text>
+            <text x={left - fs * 0.4} y={cy + fs / 3} textAnchor="end" className="chart-tick">{g.name}</text>
             <line x1={sx(g.min)} x2={sx(g.q1)} y1={cy} y2={cy} stroke={c} strokeWidth="2" />
             <line x1={sx(g.q3)} x2={sx(g.max)} y1={cy} y2={cy} stroke={c} strokeWidth="2" />
-            <line x1={sx(g.min)} x2={sx(g.min)} y1={cy - 14} y2={cy + 14} stroke={c} strokeWidth="2" />
-            <line x1={sx(g.max)} x2={sx(g.max)} y1={cy - 14} y2={cy + 14} stroke={c} strokeWidth="2" />
-            <rect x={sx(g.q1)} y={cy - 22} width={Math.max(2, sx(g.q3) - sx(g.q1))} height="44"
-                  fill={`${c}22`} stroke={c} strokeWidth="2" rx="3" />
-            <line x1={sx(g.median)} x2={sx(g.median)} y1={cy - 22} y2={cy + 22} stroke={c} strokeWidth="3.5" />
+            <line x1={sx(g.min)} x2={sx(g.min)} y1={cy - 16} y2={cy + 16} stroke={c} strokeWidth="3" />
+            <line x1={sx(g.max)} x2={sx(g.max)} y1={cy - 16} y2={cy + 16} stroke={c} strokeWidth="3" />
+            <rect x={sx(g.q1)} y={cy - 24} width={Math.max(2, sx(g.q3) - sx(g.q1))} height="48"
+                  fill={`${c}22`} stroke={c} strokeWidth="3" rx="3" />
+            <line x1={sx(g.median)} x2={sx(g.median)} y1={cy - 24} y2={cy + 24} stroke={c} strokeWidth="4.5" />
             {(g.outliers ?? []).map((o, j) => (
-              <circle key={j} cx={sx(o)} cy={cy} r="4.5" fill="none" stroke="#B91C1C" strokeWidth="2" />
+              <circle key={j} cx={sx(o)} cy={cy} r="7" fill="none" stroke="#B91C1C" strokeWidth="3" />
             ))}
-            <g className="chart-tick">
-              <text x={sx(g.min)} y={cy + 34} textAnchor="middle">{g.min}</text>
-              <text x={sx(g.q1)} y={cy - 30} textAnchor="middle">Q₁={g.q1}</text>
-              <text x={sx(g.median)} y={cy + 34} textAnchor="middle">Q₂={g.median}</text>
-              <text x={sx(g.q3)} y={cy - 30} textAnchor="middle">Q₃={g.q3}</text>
-              <text x={sx(g.max)} y={cy + 34} textAnchor="middle">{g.max}</text>
+            <g className="chart-tick svg-halo">
+              <text x={sx(g.min)} y={cy + 24 + fs * 0.95} textAnchor="middle">{g.min}</text>
+              <text x={sx(g.q1)} y={cy - 24 - fs * 0.3} textAnchor="middle">{g.q1}</text>
+              <text x={sx(g.median)} y={cy + 24 + fs * 0.95} textAnchor="middle">{g.median}</text>
+              <text x={sx(g.q3)} y={cy - 24 - fs * 0.3} textAnchor="middle">{g.q3}</text>
+              <text x={sx(g.max)} y={cy + 24 + fs * 0.95} textAnchor="middle">{g.max}</text>
             </g>
           </g>
         );
       })}
-      {v.unit && <text x={W - 16} y={H - 10} textAnchor="end" className="chart-axis">Đơn vị: {v.unit}</text>}
+      {v.unit && <text x={W - 16} y={H - fs * 0.35} textAnchor="end" className="chart-axis">Đơn vị: {v.unit}</text>}
     </svg>
   );
 }
@@ -211,13 +235,13 @@ function BoxPlot({ v }: { v: BoxPlotVisual }) {
 
 function ProbTree({ v }: { v: ProbTreeVisual }) {
   const leaves = v.branches.reduce((n, b) => n + Math.max(1, b.children?.length ?? 0), 0);
-  const W = 760, H = Math.max(240, 60 + leaves * 62);
+  const W = 860, H = Math.max(300, 80 + leaves * 78);
   const x0 = 60, x1 = 280, x2 = 540;
   const cy = H / 2;
   let row = 0;
 
   return (
-    <svg className="tree-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Sơ đồ cây xác suất">
+    <svg className="tree-svg" viewBox={`0 0 ${W} ${H}`} role="img" style={{ fontSize: svgFontPx(W, H) }} aria-label="Sơ đồ cây xác suất">
       <rect width={W} height={H} fill="#fff" rx="12" />
       <circle cx={x0} cy={cy} r="7" fill="#17324D" />
       <text x={x0} y={cy - 16} textAnchor="middle" className="tree-node">{v.root || "Bắt đầu"}</text>
@@ -264,13 +288,13 @@ function parseAngle(s: string): number {
 }
 
 function UnitCircle({ v }: { v: UnitCircleVisual }) {
-  const W = 520, H = 520, cx = 250, cy = 250, R = 180;
+  const W = 900, H = 560, cx = 450, cy = 280, R = 196;
   const px = (a: number) => cx + R * Math.cos(a);
   const py = (a: number) => cy - R * Math.sin(a);
   const show = new Set(v.show ?? []);
 
   return (
-    <svg className="circle-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Đường tròn lượng giác">
+    <svg className="circle-svg" viewBox={`0 0 ${W} ${H}`} role="img" style={{ fontSize: svgFontPx(W, H) }} aria-label="Đường tròn lượng giác">
       <rect width={W} height={H} fill="#fff" rx="12" />
       <line x1={cx - R - 40} x2={cx + R + 40} y1={cy} y2={cy} stroke="#263746" strokeWidth="1.4" />
       <line y1={cy + R + 40} y2={cy - R - 40} x1={cx} x2={cx} stroke="#263746" strokeWidth="1.4" />
@@ -320,48 +344,52 @@ function UnitCircle({ v }: { v: UnitCircleVisual }) {
 
 function NumberLine({ v }: { v: NumberLineVisual }) {
   const nlId = `nlArrow${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-  const W = 760, H = 60 + v.intervals.length * 46, p = 50;
+  const hasPoints = !!v.points?.length;
+  const W = NL_W, H = NL_HEAD + (v.intervals.length + (hasPoints ? 1 : 0)) * NL_ROW_H, p = 70;
   const sx = (x: number) => p + ((x - v.min) * (W - 2 * p)) / (v.max - v.min);
   const val = (t: number | "-inf" | "+inf") => (t === "-inf" ? v.min : t === "+inf" ? v.max : t);
   const ticks = v.ticks?.length ? v.ticks : [v.min, (v.min + v.max) / 2, v.max];
-  const axisY = 34;
+  const fs = svgFontPx(W, H);
+  // Trục nằm dưới hàng số, cách đúng một dòng chữ — V11.5 để 34 px cố định nên
+  // khi chữ to lên, số trên trục đè lên chính cái trục.
+  const axisY = fs * 1.5;
 
   return (
-    <svg className="numline-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Trục số">
+    <svg className="numline-svg" viewBox={`0 0 ${W} ${H}`} role="img" style={{ fontSize: svgFontPx(W, H) }} aria-label="Trục số">
       <rect width={W} height={H} fill="#fff" rx="12" />
       <defs>
-        <marker id={nlId} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-          <path d="M0,0 L8,4 L0,8 Z" fill="#263746" />
+        <marker id={nlId} markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+          <path d="M0,0 L10,5 L0,10 Z" fill="#263746" />
         </marker>
       </defs>
       <line x1={p - 24} x2={W - p + 24} y1={axisY} y2={axisY} stroke="#263746" strokeWidth="1.8" markerEnd={`url(#${nlId})`} />
       {ticks.map((t, i) => (
         <g key={i}>
-          <line x1={sx(t)} x2={sx(t)} y1={axisY - 7} y2={axisY + 7} stroke="#263746" strokeWidth="1.6" />
-          <text x={sx(t)} y={axisY - 14} textAnchor="middle" className="chart-tick">{t}</text>
+          <line x1={sx(t)} x2={sx(t)} y1={axisY - 9} y2={axisY + 9} stroke="#263746" strokeWidth="2" />
+          <text x={sx(t)} y={axisY - fs * 0.6} textAnchor="middle" className="chart-tick svg-halo">{t}</text>
         </g>
       ))}
       {v.intervals.map((iv, i) => {
-        const y = axisY + 30 + i * 46;
+        const y = axisY + fs * 0.9 + (hasPoints ? NL_ROW_H : 0) + i * NL_ROW_H;
         const a = sx(val(iv.from)), b = sx(val(iv.to));
         const color = iv.color || PALETTE[i % PALETTE.length];
         return (
           <g key={i}>
-            <line x1={a} x2={b} y1={y} y2={y} stroke={color} strokeWidth="6" strokeLinecap="butt" />
+            <line x1={a} x2={b} y1={y} y2={y} stroke={color} strokeWidth="8" strokeLinecap="butt" />
             {iv.from !== "-inf" && (
-              <circle cx={a} cy={y} r="7" fill={iv.closedLeft ? color : "#fff"} stroke={color} strokeWidth="3" />
+              <circle cx={a} cy={y} r="10" fill={iv.closedLeft ? color : "#fff"} stroke={color} strokeWidth="4" />
             )}
             {iv.to !== "+inf" && (
-              <circle cx={b} cy={y} r="7" fill={iv.closedRight ? color : "#fff"} stroke={color} strokeWidth="3" />
+              <circle cx={b} cy={y} r="10" fill={iv.closedRight ? color : "#fff"} stroke={color} strokeWidth="4" />
             )}
-            {iv.label && <text x={(a + b) / 2} y={y + 24} textAnchor="middle" className="chart-tick" fill={color}>{iv.label}</text>}
+            {iv.label && <text x={(a + b) / 2} y={y + fs * 1.1} textAnchor="middle" className="chart-tick svg-halo" fill={color}>{iv.label}</text>}
           </g>
         );
       })}
       {v.points?.map((q, i) => (
         <g key={i}>
-          <circle cx={sx(q.x)} cy={axisY} r="6" fill={q.filled === false ? "#fff" : "#E4572E"} stroke="#E4572E" strokeWidth="2.5" />
-          {q.label && <text x={sx(q.x)} y={axisY + 22} textAnchor="middle" className="chart-tick">{q.label}</text>}
+          <circle cx={sx(q.x)} cy={axisY} r="9" fill={q.filled === false ? "#fff" : "#E4572E"} stroke="#E4572E" strokeWidth="3" />
+          {q.label && <text x={sx(q.x)} y={axisY + fs * 1.15} textAnchor="middle" className="chart-tick svg-halo">{q.label}</text>}
         </g>
       ))}
     </svg>
@@ -373,7 +401,14 @@ function NumberLine({ v }: { v: NumberLineVisual }) {
 /* ------------------------------------------------------------------ */
 
 function InequalityRegion({ v }: { v: RegionVisual }) {
-  const W = 640, H = 480, p = 44;
+  /**
+   * V11.5 ghi nhãn ràng buộc ("x + y ≤ 6") ngay giữa đường thẳng tương ứng. Hai
+   * đường cắt nhau giữa hình thì hai nhãn chồng khít lên nhau — ở cỡ chữ 33 px
+   * thành một vệt không đọc được. V11.6 gom chúng thành một bảng chú giải ở góc
+   * trên trái, mỗi nhãn một dòng, kèm đoạn mẫu đúng màu và kiểu nét.
+   */
+  const W = 780, H = 500, p = 60;
+  const fs = svgFontPx(W, H);
   const sx = (x: number) => p + ((x - v.xMin) * (W - 2 * p)) / (v.xMax - v.xMin);
   const sy = (y: number) => H - p - ((y - v.yMin) * (H - 2 * p)) / (v.yMax - v.yMin);
 
@@ -393,7 +428,7 @@ function InequalityRegion({ v }: { v: RegionVisual }) {
   }
 
   return (
-    <svg className="region-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Miền nghiệm hệ bất phương trình">
+    <svg className="region-svg" viewBox={`0 0 ${W} ${H}`} role="img" style={{ fontSize: svgFontPx(W, H) }} aria-label="Miền nghiệm hệ bất phương trình">
       <rect width={W} height={H} fill="#fff" rx="12" />
       <g stroke="#E2EAF1">
         {Array.from({ length: 11 }, (_, i) => <line key={`h${i}`} x1={p} x2={W - p} y1={p + (i * (H - 2 * p)) / 10} y2={p + (i * (H - 2 * p)) / 10} />)}
@@ -419,18 +454,30 @@ function InequalityRegion({ v }: { v: RegionVisual }) {
           <g key={i}>
             <line x1={sx(x1)} y1={sy(y1)} x2={sx(x2)} y2={sy(y2)} stroke={color} strokeWidth="2.4"
                   strokeDasharray={strict ? "8 5" : undefined} />
-            {c.label && <text x={sx((x1 + x2) / 2) + 6} y={sy((y1 + y2) / 2) - 6} className="chart-tick" fill={color}>{c.label}</text>}
           </g>
         );
       })}
+
+      {/* chú giải các ràng buộc */}
+      <g className="chart-tick svg-halo">
+        {v.constraints.map((c, i) =>
+          c.label ? (
+            <g key={i} transform={`translate(${p + 10}, ${p + fs * (1.1 + i * 1.35)})`}>
+              <line x1="0" x2={fs * 1.1} y1={-fs * 0.3} y2={-fs * 0.3} stroke={PALETTE[i % PALETTE.length]} strokeWidth="4"
+                    strokeDasharray={c.op === "<" || c.op === ">" ? "8 5" : undefined} />
+              <text x={fs * 1.5} fill={PALETTE[i % PALETTE.length]}>{c.label}</text>
+            </g>
+          ) : null,
+        )}
+      </g>
       {v.vertices?.map((q, i) => (
         <g key={i}>
-          <circle cx={sx(q.x)} cy={sy(q.y)} r="5.5" fill="#E4572E" stroke="#fff" strokeWidth="1.5" />
-          <text x={sx(q.x) + 9} y={sy(q.y) - 8} className="chart-tick">{q.label || `(${q.x}; ${q.y})`}</text>
+          <circle cx={sx(q.x)} cy={sy(q.y)} r="8" fill="#E4572E" stroke="#fff" strokeWidth="2" />
+          <text x={sx(q.x) + fs * 0.4} y={sy(q.y) - fs * 0.4} className="chart-tick svg-halo">{q.label || `(${q.x}; ${q.y})`}</text>
         </g>
       ))}
       {v.objective && (
-        <text x={W - 14} y={22} textAnchor="end" className="chart-title">
+        <text x={W - 14} y={H - fs * 0.4} textAnchor="end" className="chart-title svg-halo">
           {v.objective.label || `F = ${v.objective.p}x + ${v.objective.q}y`}
         </text>
       )}
@@ -445,7 +492,8 @@ function InequalityRegion({ v }: { v: RegionVisual }) {
 const LETTERS = "ABCDEFGH".split("");
 
 function Solid3D({ v }: { v: Solid3DVisual }) {
-  const W = 560, H = 460, cx = 280, cy = 300, s = 46;
+  const W = 780, H = 500, cx = 390, cy = 320, s = 52;
+  const fsSolid = svgFontPx(W, H);
   const proj = (x: number, y: number, z: number): [number, number] =>
     [cx + (x - y) * 0.866 * s, cy + ((x + y) * 0.5 - z) * s];
 
@@ -497,7 +545,7 @@ function Solid3D({ v }: { v: Solid3DVisual }) {
   const rx = r * 0.866 * s * 1.15, ry = r * 0.5 * s;
 
   return (
-    <svg className="solid-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={v.caption || "Hình không gian"}>
+    <svg className="solid-svg" viewBox={`0 0 ${W} ${H}`} role="img" style={{ fontSize: svgFontPx(W, H) }} aria-label={v.caption || "Hình không gian"}>
       <rect width={W} height={H} fill="#fff" rx="12" />
       {isRound && v.shape !== "sphere" && (
         <>
@@ -533,27 +581,37 @@ function Solid3D({ v }: { v: Solid3DVisual }) {
                 strokeWidth={e.dashed ? 1.4 : 2} strokeDasharray={e.dashed ? "7 5" : undefined} />
         ))}
 
+      {/* Đoạn cần nhấn mạnh: chỉ TÔ ĐẬM trên hình, còn chú thích ("SA ⊥ (ABCD)")
+          xếp thành danh sách ở góc trên trái. V11.5 ghi ngay giữa đoạn, nên ở cỡ
+          chữ lớn nó nằm đè lên đỉnh và cạnh khác của khối. */}
       {v.highlights?.map((hl, i) => {
         const a = nodes.get(hl.from), b = nodes.get(hl.to);
         if (!a || !b) return null;
         return (
-          <g key={i}>
-            <line x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke={hl.color || "#E4572E"} strokeWidth="2.8"
-                  strokeDasharray={hl.dashed ? "7 5" : undefined} />
-            {hl.label && (
-              <text x={(a[0] + b[0]) / 2 + 8} y={(a[1] + b[1]) / 2 - 6} className="chart-tick" fill={hl.color || "#E4572E"}>{hl.label}</text>
-            )}
-          </g>
+          <line key={i} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke={hl.color || "#E4572E"} strokeWidth="4"
+                strokeDasharray={hl.dashed ? "8 5" : undefined} />
         );
       })}
+      <g className="chart-tick svg-halo">
+        {v.highlights?.map((hl, i) =>
+          hl.label ? (
+            <g key={i} transform={`translate(16, ${fsSolid * (1.1 + i * 1.35)})`}>
+              <line x1="0" x2={fsSolid * 1.1} y1={-fsSolid * 0.3} y2={-fsSolid * 0.3} stroke={hl.color || "#E4572E"} strokeWidth="4"
+                    strokeDasharray={hl.dashed ? "8 5" : undefined} />
+              <text x={fsSolid * 1.5} fill={hl.color || "#E4572E"}>{hl.label}</text>
+            </g>
+          ) : null,
+        )}
+      </g>
 
       {[...nodes.entries()].map(([name, pt], i) => (
         <g key={i}>
-          <circle cx={pt[0]} cy={pt[1]} r="3.5" fill="#263746" />
-          <text x={pt[0] + (pt[0] < cx ? -12 : 10)} y={pt[1] + (pt[1] < cy ? -8 : 16)} className="solid-label">{name}</text>
+          <circle cx={pt[0]} cy={pt[1]} r="5" fill="#263746" />
+          <text x={pt[0] + (pt[0] < cx ? -fsSolid * 0.5 : fsSolid * 0.4)} y={pt[1] + (pt[1] < cy ? -fsSolid * 0.4 : fsSolid)}
+                textAnchor={pt[0] < cx ? "end" : "start"} className="solid-label svg-halo">{name}</text>
         </g>
       ))}
-      {v.caption && <text x={W / 2} y={H - 12} textAnchor="middle" className="visual-caption-svg">{v.caption}</text>}
+      {v.caption && <text x={W / 2} y={H - fsSolid * 0.35} textAnchor="middle" className="visual-caption-svg">{v.caption}</text>}
     </svg>
   );
 }
@@ -566,7 +624,7 @@ function Oxyz({ v }: { v: OxyzVisual }) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const axId = `axArrow${uid}`;
   const vecId = `vecArrow${uid}`;
-  const W = 560, H = 460, cx = 250, cy = 270;
+  const W = 780, H = 500, cx = 340, cy = 300;
   const range = v.range ?? 4;
   const s = 150 / range;
   const proj = (x: number, y: number, z: number): [number, number] =>
@@ -574,7 +632,7 @@ function Oxyz({ v }: { v: OxyzVisual }) {
   const O = proj(0, 0, 0);
 
   return (
-    <svg className="oxyz-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Hệ trục toạ độ Oxyz">
+    <svg className="oxyz-svg" viewBox={`0 0 ${W} ${H}`} role="img" style={{ fontSize: svgFontPx(W, H) }} aria-label="Hệ trục toạ độ Oxyz">
       <rect width={W} height={H} fill="#fff" rx="12" />
       <defs>
         <marker id={axId} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
@@ -643,11 +701,11 @@ function Oxyz({ v }: { v: OxyzVisual }) {
 
 function Vector2D({ v }: { v: VectorVisual }) {
   const v2Id = `v2Arrow${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-  const W = 620, H = 460, p = 40;
+  const W = 780, H = 500, p = 56;
   const sx = (x: number) => p + ((x - v.xMin) * (W - 2 * p)) / (v.xMax - v.xMin);
   const sy = (y: number) => H - p - ((y - v.yMin) * (H - 2 * p)) / (v.yMax - v.yMin);
   return (
-    <svg className="vector-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Hình vectơ">
+    <svg className="vector-svg" viewBox={`0 0 ${W} ${H}`} role="img" style={{ fontSize: svgFontPx(W, H) }} aria-label="Hình vectơ">
       <rect width={W} height={H} fill="#fff" rx="12" />
       <defs>
         <marker id={v2Id} markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
@@ -695,20 +753,21 @@ function Vector2D({ v }: { v: VectorVisual }) {
 
 function Venn({ v }: { v: VennVisual }) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
-  const W = 560, H = 340;
+  const W = 700, H = 420;
+  const fsVenn = svgFontPx(W, H);
   const two = v.sets.length <= 2;
   const centers = two
-    ? [[220, 170], [340, 170]]
-    : [[220, 145], [340, 145], [280, 245]];
-  const R = two ? 105 : 95;
+    ? [[270, 190], [430, 190]]
+    : [[265, 165], [435, 165], [350, 285]];
+  const R = two ? 125 : 110;
   const shade = new Set(v.shade ?? []);
   const names = v.sets.map((s) => s.name);
 
   return (
-    <svg className="venn-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Biểu đồ Ven">
+    <svg className="venn-svg" viewBox={`0 0 ${W} ${H}`} role="img" style={{ fontSize: svgFontPx(W, H) }} aria-label="Biểu đồ Ven">
       <rect width={W} height={H} fill="#fff" rx="12" />
-      <rect x="60" y="40" width={W - 120} height={H - 80} fill="none" stroke="#9AA9B8" strokeWidth="1.5" rx="8" />
-      <text x="70" y="60" className="chart-tick">E</text>
+      <rect x="60" y="30" width={W - 120} height={H - 90} fill="none" stroke="#9AA9B8" strokeWidth="2" rx="8" />
+      <text x={70} y={30 + fsVenn} className="chart-tick">E</text>
       <defs>
         {centers.map((c, i) => (
           <clipPath key={i} id={`venn${uid}_${i}`}>
@@ -735,7 +794,7 @@ function Venn({ v }: { v: VennVisual }) {
           </text>
         </g>
       ))}
-      {v.caption && <text x={W / 2} y={H - 12} textAnchor="middle" className="visual-caption-svg">{v.caption}</text>}
+      {v.caption && <text x={W / 2} y={H - fsVenn * 0.35} textAnchor="middle" className="visual-caption-svg">{v.caption}</text>}
     </svg>
   );
 }

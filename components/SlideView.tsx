@@ -16,8 +16,8 @@ import { MathVisual, MixedMath } from "./MathVisuals";
 import type { Lesson } from "@/lib/types";
 import { getTheme, PHASE_META, VISUAL_LABEL, type Theme } from "@/lib/themes";
 import {
-  IN, LAYOUT, SLIDE_H_IN, SLIDE_W_IN, bodyFontPt, toBullets, visualBoxes,
-  type DeckMeta, type SlideSpec,
+  IN, LAYOUT, SLIDE_H_IN, SLIDE_W_IN, TYPO, textBandBox, visualBox, visualImageBox,
+  type Box, type DeckMeta, type SlideSpec,
 } from "@/lib/slides";
 
 const px = (inch: number) => inch * IN;
@@ -119,9 +119,14 @@ function Footer({ t, lesson }: { t: Theme; lesson: Lesson }) {
   );
 }
 
-function Bullets({ t, text, box, hasVisual }: { t: Theme; text: string; box: { x: number; y: number; w: number; h: number }; hasVisual: boolean }) {
-  const items = toBullets(text);
-  const size = hasVisual ? Math.min(18, bodyFontPt(text.length, true)) : bodyFontPt(text.length, false);
+/**
+ * Khối gạch đầu dòng. V11.6 KHÔNG tự tính cỡ chữ ở đây nữa: lib/slides.ts đã
+ * chốt cỡ chữ và chia trang khi dựng danh sách slide, nên khung xem trước chỉ
+ * việc vẽ lại đúng con số đó. Trước kia mỗi nơi tính một kiểu, dẫn tới xem
+ * trước một đằng file xuất ra một nẻo.
+ */
+function Bullets({ t, items, box, size }: { t: Theme; items: string[]; box: Box; size: number }) {
+  if (!items.length) return null;
   return (
     <div
       className="sl-bullets"
@@ -152,23 +157,23 @@ export function SlideBoard({
     return (
       <div className="sl-body" style={{ background: `#${t.coverBg}` }}>
         <div className="sl-accent" style={{ left: px(0.72), top: px(0.72), width: px(0.18), height: px(5.9), background: `#${t.accent}` }} />
-        <div className="sl-abs" style={{ left: px(1.25), top: px(1.0), fontSize: pt(13), letterSpacing: "0.18em", color: `#${t.accent}`, fontWeight: 700, fontFamily: `"${t.bodyFont}", sans-serif` }}>
+        <div className="sl-abs" style={{ left: px(1.25), top: px(1.0), fontSize: pt(TYPO.coverKicker), letterSpacing: "0.18em", color: `#${t.accent}`, fontWeight: 700, fontFamily: `"${t.bodyFont}", sans-serif` }}>
           BÀI GIẢNG MÔN TOÁN · THPT
         </div>
-        <div className="sl-abs sl-covertitle" style={{ left: px(1.25), top: px(1.6), width: px(10.5), height: px(1.7), fontSize: pt(36), color: `#${t.coverInk}`, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}>
+        <div className="sl-abs sl-covertitle" style={{ left: px(1.25), top: px(1.55), width: px(10.8), height: px(1.9), fontSize: pt(TYPO.coverTitle), color: `#${t.coverInk}`, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}>
           <MixedMath value={lesson.title} />
         </div>
-        <div className="sl-abs" style={{ left: px(1.25), top: px(3.6), width: px(2.2), height: 4, background: `#${t.accent}` }} />
-        <div className="sl-abs" style={{ left: px(1.25), top: px(3.95), fontSize: pt(17), color: `#${t.coverInk}`, fontFamily: `"${t.bodyFont}", sans-serif` }}>
+        <div className="sl-abs" style={{ left: px(1.25), top: px(3.7), width: px(2.2), height: 4, background: `#${t.accent}` }} />
+        <div className="sl-abs" style={{ left: px(1.25), top: px(4.05), fontSize: pt(TYPO.coverMeta), color: `#${t.coverInk}`, fontFamily: `"${t.bodyFont}", sans-serif` }}>
           {lesson.subject || "Toán"} &nbsp;|&nbsp; Lớp {lesson.grade || "THPT"}{lesson.book ? ` | ${lesson.book}` : ""}
         </div>
         {meta?.teacher && (
-          <div className="sl-abs" style={{ left: px(1.25), top: px(4.55), fontSize: pt(15), color: `#${t.coverInk}`, fontFamily: `"${t.bodyFont}", sans-serif` }}>
+          <div className="sl-abs" style={{ left: px(1.25), top: px(4.7), fontSize: pt(TYPO.coverTeacher), color: `#${t.coverInk}`, fontFamily: `"${t.bodyFont}", sans-serif` }}>
             Giáo viên: {meta.teacher}
           </div>
         )}
         {meta?.school && (
-          <div className="sl-abs" style={{ left: px(1.25), top: px(5.0), fontSize: pt(13), color: `#${t.coverInk}`, opacity: 0.8, fontFamily: `"${t.bodyFont}", sans-serif` }}>
+          <div className="sl-abs" style={{ left: px(1.25), top: px(5.25), fontSize: pt(TYPO.coverSchool), color: `#${t.coverInk}`, opacity: 0.8, fontFamily: `"${t.bodyFont}", sans-serif` }}>
             {meta.school}
           </div>
         )}
@@ -180,10 +185,10 @@ export function SlideBoard({
     const m = PHASE_META[spec.phase];
     return (
       <div className="sl-body" style={{ background: `#${t.coverBg}` }}>
-        <div className="sl-abs" style={{ left: 0, top: px(3.05), width: px(SLIDE_W_IN), height: px(0.08), background: `#${m?.color || t.accent}` }} />
+        <div className="sl-abs" style={{ left: 0, top: px(3.0), width: px(SLIDE_W_IN), height: px(0.1), background: `#${m?.color || t.accent}` }} />
         <div
           className="sl-abs sl-center"
-          style={{ left: 0, top: px(3.2), width: px(SLIDE_W_IN), height: px(0.9), fontSize: pt(40), color: `#${t.coverInk}`, letterSpacing: "0.14em", fontWeight: 700, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}
+          style={{ left: 0, top: px(3.25), width: px(SLIDE_W_IN), height: px(1.0), fontSize: pt(TYPO.divider), color: `#${t.coverInk}`, letterSpacing: "0.14em", fontWeight: 700, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}
         >
           {(m?.label || "Hoạt động").toUpperCase()}
         </div>
@@ -194,11 +199,11 @@ export function SlideBoard({
   if (spec.kind === "end") {
     return (
       <div className="sl-body" style={{ background: `#${t.coverBg}` }}>
-        <div className="sl-abs sl-center" style={{ left: px(0.8), top: px(3.0), width: px(11.7), height: px(1.2), fontSize: pt(30), color: `#${t.coverInk}`, fontWeight: 700, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}>
+        <div className="sl-abs sl-center" style={{ left: px(0.8), top: px(2.9), width: px(11.7), height: px(1.4), fontSize: pt(TYPO.endTitle), color: `#${t.coverInk}`, fontWeight: 700, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}>
           CẢM ƠN CÁC EM ĐÃ THAM GIA TIẾT HỌC
         </div>
         {lesson.keywords?.length ? (
-          <div className="sl-abs sl-center" style={{ left: px(0.8), top: px(4.2), width: px(11.7), fontSize: pt(14), color: `#${t.accent}`, fontFamily: `"${t.bodyFont}", sans-serif` }}>
+          <div className="sl-abs sl-center" style={{ left: px(0.8), top: px(4.45), width: px(11.7), fontSize: pt(TYPO.endKeywords), color: `#${t.accent}`, fontFamily: `"${t.bodyFont}", sans-serif` }}>
             Từ khoá: {lesson.keywords.join(" · ")}
           </div>
         ) : null}
@@ -211,24 +216,31 @@ export function SlideBoard({
       <div className="sl-body" style={{ background: `#${t.bg}` }}>
         <Chrome t={t} title="Yêu cầu cần đạt" number={number} />
         <Footer t={t} lesson={lesson} />
-        <div className="sl-bullets" style={{ left: px(0.9), top: px(1.6), width: px(11.6), height: px(5), fontSize: pt(20), color: `#${t.ink}`, fontFamily: `"${t.bodyFont}", sans-serif` }}>
-          <ul>{spec.items.map((o, i) => <li key={i}><MixedMath value={o} /></li>)}</ul>
-        </div>
+        <Bullets
+          t={t}
+          items={spec.items}
+          size={spec.bodyPt}
+          box={{ x: LAYOUT.textOnly.bullets.x - 1.4, y: LAYOUT.textOnly.bullets.y, w: LAYOUT.textOnly.bullets.w + 1.4, h: LAYOUT.textOnly.bullets.h }}
+        />
       </div>
     );
   }
 
   /* ----- slide nội dung ----- */
-  const { section, part, visuals } = spec;
+  const { section, part, bullets, bodyPt, bandH, visual, showNumber } = spec;
   const heading = section.heading + (part ? " (tiếp)" : "");
-  const boxes = visualBoxes(part, visuals.length, visuals.map((v) => v.visual.type));
+  const band = textBandBox(bandH);
+  const vbox = visual ? visualBox(bandH) : null;
+  const vimg = vbox ? visualImageBox(vbox) : null;
 
   return (
     <div className="sl-body" style={{ background: `#${t.bg}` }}>
       <Chrome t={t} title={heading} phase={section.phase} number={number} />
       <Footer t={t} lesson={lesson} />
 
-      {!visuals.length ? (
+      {/* Khối chữ: trải hết bề ngang. Không có hình thì chiếm trọn vùng nội
+          dung, có hình thì thành một dải ở trên, cao đúng bằng số dòng cần. */}
+      {!visual && (
         <>
           <div
             className="sl-panel"
@@ -238,77 +250,60 @@ export function SlideBoard({
               background: `#${t.surface}`, borderColor: `#${t.line}`,
             }}
           />
-          <div
-            className="sl-abs"
-            style={{
-              left: px(LAYOUT.textOnly.number.x), top: px(LAYOUT.textOnly.number.y),
-              fontSize: pt(LAYOUT.textOnly.number.pt), color: `#${t.accent}`, fontWeight: 700,
-              fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif`,
-            }}
-          >
-            {String(spec.sectionIndex + 1).padStart(2, "0")}
-          </div>
-          <Bullets t={t} text={section.content} box={LAYOUT.textOnly.bullets} hasVisual={false} />
-        </>
-      ) : (
-        <>
-          {part === 0 ? (
-            <>
-              <div
-                className="sl-panel"
-                style={{
-                  left: px(LAYOUT.sidePanel.box.x), top: px(LAYOUT.sidePanel.box.y),
-                  width: px(LAYOUT.sidePanel.box.w), height: px(LAYOUT.sidePanel.box.h),
-                  background: `#${t.surface}`, borderColor: `#${t.line}`,
-                }}
-              />
-              <div
-                className="sl-kicker"
-                style={{
-                  left: px(LAYOUT.sidePanel.label.x), top: px(LAYOUT.sidePanel.label.y),
-                  fontSize: pt(LAYOUT.sidePanel.label.pt), color: `#${t.primary}`,
-                  fontFamily: `"${t.bodyFont}", sans-serif`,
-                }}
-              >
-                NỘI DUNG TRỌNG TÂM
-              </div>
-              <Bullets t={t} text={section.content} box={LAYOUT.sidePanel.bullets} hasVisual />
-            </>
-          ) : (
+          {showNumber && (
             <div
               className="sl-abs"
               style={{
-                left: px(LAYOUT.contPanel.x), top: px(LAYOUT.contPanel.y),
-                fontSize: pt(LAYOUT.contPanel.pt), color: `#${t.muted}`, fontStyle: "italic",
-                fontFamily: `"${t.bodyFont}", sans-serif`,
+                left: px(LAYOUT.textOnly.number.x), top: px(LAYOUT.textOnly.number.y),
+                fontSize: pt(LAYOUT.textOnly.number.pt), color: `#${t.accent}`, fontWeight: 700,
+                fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif`,
               }}
             >
-              Tiếp theo phần trước
+              {String(spec.sectionIndex + 1).padStart(2, "0")}
             </div>
           )}
+          <Bullets
+            t={t}
+            items={bullets}
+            size={bodyPt}
+            box={showNumber
+              ? LAYOUT.textOnly.bullets
+              : { x: LAYOUT.textOnly.box.x + 0.33, y: LAYOUT.textOnly.bullets.y, w: LAYOUT.textOnly.box.w - 0.66, h: LAYOUT.textOnly.bullets.h }}
+          />
+        </>
+      )}
 
-          {visuals.map(({ visual }, k) => {
-            const b = boxes[k];
-            return (
-              <div key={k}>
-                <div
-                  className="sl-kicker"
-                  style={{
-                    left: px(b.x + 0.12), top: px(b.y + 0.04),
-                    fontSize: pt(9.5), color: `#${t.primary}`, fontFamily: `"${t.bodyFont}", sans-serif`,
-                  }}
-                >
-                  {VISUAL_LABEL[visual.type] || "HÌNH MINH HOẠ"}
-                </div>
-                <div
-                  className="sl-visual"
-                  style={{ left: px(b.x), top: px(b.y + 0.34), width: px(b.w), height: px(b.h - 0.34) }}
-                >
-                  <MathVisual visual={visual} />
-                </div>
-              </div>
-            );
-          })}
+      {visual && bandH > 0 && bullets.length > 0 && (
+        <>
+          <div
+            className="sl-panel"
+            style={{
+              left: px(band.panel.x), top: px(band.panel.y),
+              width: px(band.panel.w), height: px(band.panel.h),
+              background: `#${t.surface}`, borderColor: `#${t.line}`,
+            }}
+          />
+          <Bullets t={t} items={bullets} size={bodyPt} box={band.bullets} />
+        </>
+      )}
+
+      {visual && vbox && vimg && (
+        <>
+          <div
+            className="sl-kicker"
+            style={{
+              left: px(vbox.x + 0.15), top: px(vbox.y),
+              fontSize: pt(TYPO.visualLabel), color: `#${t.primary}`, fontFamily: `"${t.bodyFont}", sans-serif`,
+            }}
+          >
+            {VISUAL_LABEL[visual.visual.type] || "HÌNH MINH HOẠ"}
+          </div>
+          <div
+            className="sl-visual"
+            style={{ left: px(vimg.x), top: px(vimg.y), width: px(vimg.w), height: px(vimg.h) }}
+          >
+            <MathVisual visual={visual.visual} />
+          </div>
         </>
       )}
     </div>

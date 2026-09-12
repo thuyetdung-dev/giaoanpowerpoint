@@ -89,23 +89,38 @@
 .numline-svg text, .region-svg text, .solid-svg text, .oxyz-svg text, .vector-svg text, .venn-svg text {
   font-family: "Times New Roman", Cambria, serif; fill: #182735;
 }
-.chart-title { font: 700 17px Arial, sans-serif; fill: #17283a; }
-.chart-tick { font: 13px Arial, sans-serif; fill: #46586a; }
-.chart-axis { font: italic 700 14px "Times New Roman", serif; fill: #263746; }
-.chart-value { font: 700 12px Arial, sans-serif; fill: #37506a; }
-.chart-slice { font: 700 14px Arial, sans-serif; fill: #ffffff; }
-.chart-legend text { font: 13px Arial, sans-serif; fill: #37506a; }
-.tree-node { font: 600 14px Arial, sans-serif; fill: #17283a; }
-.tree-prob { font: italic 13px "Times New Roman", serif; fill: #6b4f00; }
-.circle-label { font: 600 15px "Times New Roman", serif; }
-.solid-label { font: italic 700 17px "Times New Roman", serif; fill: #17283a; }
-.graph-tick text, .graph-tick { font: 12px Arial, sans-serif; fill: #46586a; }
-.graph-point-label { font: 600 13px Arial, sans-serif; fill: #17283a; }
-.graph-legend text { font: 13px Arial, sans-serif; fill: #37506a; }
-.graph-error { font: 600 15px Arial, sans-serif; fill: #b91c1c; }
-.axis-name { font: italic 700 15px "Times New Roman", serif; fill: #263746; }
-.visual-caption-svg { font: italic 13px "Times New Roman", serif; fill: #6b7785; }
-.sign-svg { display: block; width: 100%; min-width: 560px; height: auto; }
+/* ------------------------------------------------------------------ */
+/* V11.6 — chữ trong hình đo bằng em, KHÔNG bằng px                     */
+/*                                                                      */
+/* Mỗi thẻ <svg> tự đặt font-size gốc = svgFontPx(W, H) trong            */
+/* lib/slides.ts — cỡ chữ tính ngược từ ô chứa trên slide sao cho in ra  */
+/* đạt 32 pt. Các lớp dưới đây chỉ nói "to hơn cỡ gốc bao nhiêu lần".    */
+/* ĐỪNG đổi lại thành px: khung vẽ mỗi loại hình một khác, một con số px */
+/* cố định sẽ làm hình này đọc được còn hình kia thì mờ. Cũng đừng đặt   */
+/* dưới 1em — 1em chính là ngưỡng 32 pt.                                 */
+/* ------------------------------------------------------------------ */
+.chart-title { font: 700 1.12em Arial, sans-serif; fill: #17283a; }
+.chart-tick { font: 1em Arial, sans-serif; fill: #46586a; }
+.chart-axis { font: italic 700 1.06em "Times New Roman", serif; fill: #263746; }
+.chart-value { font: 700 1em Arial, sans-serif; fill: #37506a; }
+.chart-slice { font: 700 1.06em Arial, sans-serif; fill: #ffffff; }
+.chart-legend text { font: 1em Arial, sans-serif; fill: #37506a; }
+.tree-node { font: 600 1.02em Arial, sans-serif; fill: #17283a; }
+.tree-prob { font: italic 1em "Times New Roman", serif; fill: #6b4f00; }
+.circle-label { font: 600 1.06em "Times New Roman", serif; }
+.solid-label { font: italic 700 1.12em "Times New Roman", serif; fill: #17283a; }
+.graph text, .graph-tick text, .graph-tick { font-family: Arial, sans-serif; fill: #46586a; }
+.graph-point-label { font-weight: 600; fill: #17283a; }
+.graph-legend text { fill: #37506a; }
+.graph-error { font-weight: 600; fill: #b91c1c; }
+.axis-name { font-style: italic; font-weight: 700; font-family: "Times New Roman", serif; fill: #263746; }
+.visual-caption-svg { font: italic 1em "Times New Roman", serif; fill: #6b7785; }
+
+/* Viền trắng quanh chữ để nhãn không bị nét vẽ nuốt mất. paint-order phải có
+   trong STYLE_PROPS của lib/exporters.ts, nếu không khi xuất ảnh chữ sẽ rỗng
+   ruột vì nét vẽ đè lên phần tô. */
+.svg-halo { paint-order: stroke; stroke: #ffffff; stroke-width: 6px; stroke-linejoin: round; }
+.sign-svg { display: block; width: 100%; min-width: 0; height: auto; }
 .stat-svg, .tree-svg, .circle-svg, .numline-svg, .region-svg,
 .solid-svg, .oxyz-svg, .vector-svg, .venn-svg { display: block; width: 100%; height: auto; background: #fff; }
 .visual-card.variation_table, .visual-card.sign_chart, .visual-card.data_table, .visual-card.quiz { grid-column: 1 / -1; }
@@ -187,3 +202,49 @@
 .library-note { margin: 12px 0 0; font-size: 11.5px; line-height: 1.5; color: #74838f; }
 
 .start-screen .library-panel { margin-bottom: 26px; }
+
+
+/* ================================================================== */
+/* V11.6 — CỠ CHỮ TRONG HÌNH DỰNG BẰNG HTML KHI XUẤT POWERPOINT       */
+/*                                                                    */
+/* Công thức, bảng số liệu và câu hỏi trắc nghiệm không phải SVG mà là */
+/* HTML, nên được chụp lại bằng html2canvas ở đúng kích thước bố cục.  */
+/* Ảnh đó sau đó thu cho vừa ô hình trên slide, nên chữ bị thu theo.   */
+/* V11.5 để cỡ chữ giao diện (14–17 px) => chỉ còn 13–21 pt trên slide.*/
+/*                                                                    */
+/* Các con số dưới đây chọn NGƯỢC từ ô chứa: ô ảnh rộng 11,8 in        */
+/* (849,6 pt), cao tối đa 5,26 in (378,7 pt). Thẻ quiz rộng 1000 px,   */
+/* cao 472 px => hệ số thu 378,7/472 ≈ 0,80, nên chữ 42 px ra 33,7 pt. */
+/* ĐỔI BỀ RỘNG THÌ PHẢI ĐỔI CỠ CHỮ THEO — chạy lại                     */
+/* `node scripts/measure-visuals.mjs` để kiểm tra.                     */
+/* ================================================================== */
+
+.export-staging { width: 1320px; }
+.export-staging article { width: 1280px; }
+.export-staging .visual-grid { display: block; }
+.export-staging .visual-card { width: auto; margin: 14px 0; padding: 0; border: 0; background: #fff; overflow: visible; }
+
+/* --- Công thức --- */
+.export-staging .visual-card.formula { width: 900px; padding: 18px 24px; }
+.export-staging .formula-block .math.display { font-size: 48px; }
+.export-staging .formula-block .visual-caption { font-size: 36px; margin-top: 14px; }
+
+/* --- Bảng số liệu --- */
+.export-staging .visual-card.data_table { width: 1100px; }
+.export-staging .data-table { width: 1100px; font-size: 44px; }
+.export-staging .data-table th,
+.export-staging .data-table td { padding: 14px 20px; border-width: 2px; }
+.export-staging .data-table-wrap .visual-caption { font-size: 42px; margin-top: 12px; }
+
+/* --- Câu hỏi trắc nghiệm --- */
+/* 1000 px là điểm cân bằng: rộng hơn thì ảnh bị bó theo chiều ngang, hẹp hơn
+   thì chữ xuống dòng nhiều nên ảnh cao lên và bị bó theo chiều dọc. Cả hai
+   hướng đều làm chữ trên slide nhỏ lại. */
+.export-staging .visual-card.quiz { width: 1000px; }
+.export-staging .quiz-card { width: 1000px; padding: 0; }
+.export-staging .quiz-question { font-size: 46px; line-height: 1.28; margin: 0 0 14px; }
+.export-staging .quiz-options { gap: 8px; }
+.export-staging .quiz-option { font-size: 42px; line-height: 1.3; padding: 8px 14px; border-width: 2px; border-radius: 12px; gap: 14px; }
+.export-staging .quiz-option b { flex: 0 0 56px; height: 56px; font-size: 40px; }
+.export-staging .quiz-explain { font-size: 40px; padding: 12px 16px; margin-top: 10px; }
+.export-staging .quiz-timer { font-size: 36px; }

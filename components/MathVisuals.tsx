@@ -32,6 +32,7 @@ import type {
 } from "@/lib/types";
 import { ExtraVisual, isExtraVisual } from "./MathVisualsExtra";
 import { computeLevels, isMinusInf, isPlusInf, plainMath } from "@/lib/bbt";
+import { GRAPH_H, GRAPH_W, SC_HEAD, SC_ROW_H, SC_W, VT_H, VT_W, svgFontPx } from "@/lib/slides";
 
 /* ------------------------------------------------------------------ */
 /* Công thức                                                           */
@@ -91,18 +92,27 @@ function VariationTable({ v }: { v: VariationVisual }) {
   // biến thiên trên mọi bảng còn lại biến mất.
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const arrowId = `bbtArrow${uid}`;
-  const W = 860;
-  const H = 300;
-  const L = 84;
-  const xRow = 58;
-  const dRow = 112;
-  const yTop = dRow + 34;
-  const yBottom = H - 26;
+  /**
+   * V11.5 vẽ khung 860×300 rồi để bộ xuất nhét vào ô rộng 7,3 in bên phải khối
+   * chữ. Hệ số thu còn 0,61 nên nhãn 22 px chỉ ra 13 pt trên slide — học sinh
+   * bàn ba đã chịu. V11.6 giữ khung do lib/slides.ts quy định (hình chiếm trọn
+   * bề ngang slide) và tính NGƯỢC cỡ chữ từ ô chứa bằng svgFontPx().
+   */
+  const W = VT_W;
+  const H = VT_H;
+  const fs = svgFontPx(W, H);
+  const L = 120;
+  const xRow = 62;
+  const dRow = 132;
+  // yBottom phải chừa đủ một dòng chữ phía dưới, nếu không giá trị ở đáy bảng
+  // (thường là -∞) bị mép khung cắt mất — lỗi này chỉ lộ ra khi chữ to lên.
+  const yTop = 176;
+  const yBottom = H - 46;
 
   const n = Math.max(2, v.x.length);
   // Chừa lề sau vạch dọc: V10 đặt mốc đầu tiên ngay trên vạch nên "-∞" bị vạch cắt đôi.
-  const padIn = 38;
-  const step = (W - L - padIn - 26) / (n - 1);
+  const padIn = 44;
+  const step = (W - L - padIn - 30) / (n - 1);
   const xs = Array.from({ length: n }, (_, i) => L + padIn + i * step);
   const dis = new Map((v.discontinuities ?? []).map((d) => [d.index, d]));
 
@@ -128,8 +138,8 @@ function VariationTable({ v }: { v: VariationVisual }) {
     <svg className="variation-svg" viewBox={`0 0 ${W} ${H}`} role="img"
          aria-label={`Bảng biến thiên${v.label ? " của " + v.label : ""}`}>
       <defs>
-        <marker id={arrowId} markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
-          <path d="M0,0 L9,4.5 L0,9 Z" fill="#263746" />
+        <marker id={arrowId} markerWidth="11" markerHeight="11" refX="10" refY="5.5" orient="auto">
+          <path d="M0,0 L11,5.5 L0,11 Z" fill="#263746" />
         </marker>
       </defs>
 
@@ -138,25 +148,25 @@ function VariationTable({ v }: { v: VariationVisual }) {
       <line x1="1" x2={W - 1} y1={xRow} y2={xRow} stroke="#263746" />
       <line x1="1" x2={W - 1} y1={dRow} y2={dRow} stroke="#263746" />
 
-      <text x={L / 2} y="38" className="bbt-label">x</text>
-      <text x={L / 2} y="92" className="bbt-label">{v.label ? `${v.label}′` : "y′"}</text>
-      <text x={L / 2} y={(yTop + yBottom) / 2} className="bbt-label">{v.label ?? "y"}</text>
+      <text x={L / 2} y={xRow - 18} className="bbt-label" style={{ fontSize: fs + 1 }}>x</text>
+      <text x={L / 2} y={dRow - 22} className="bbt-label" style={{ fontSize: fs + 1 }}>{v.label ? `${v.label}′` : "y′"}</text>
+      <text x={L / 2} y={(yTop + yBottom) / 2 + fs / 3} className="bbt-label" style={{ fontSize: fs + 1 }}>{v.label ?? "y"}</text>
 
       {/* hàng x */}
       {xs.map((x, i) => (
-        <text key={`x${i}`} x={x} y="38" className="bbt-text">{plainMath(v.x[i] ?? "")}</text>
+        <text key={`x${i}`} x={x} y={xRow - 18} className="bbt-text" style={{ fontSize: fs }}>{plainMath(v.x[i] ?? "")}</text>
       ))}
 
       {/* dấu trên từng khoảng */}
       {Array.from({ length: n - 1 }, (_, i) => (
-        <text key={`s${i}`} x={(xs[i] + xs[i + 1]) / 2} y="92" className="bbt-sign">
+        <text key={`s${i}`} x={(xs[i] + xs[i + 1]) / 2} y={dRow - 22} className="bbt-sign" style={{ fontSize: fs + 3 }}>
           {plainMath(intervalSign(i))}
         </text>
       ))}
 
       {/* giá trị y' tại điểm tới hạn (0 hoặc || nếu không xác định) */}
       {Array.from({ length: Math.max(0, n - 2) }, (_, i) => (
-        <text key={`z${i}`} x={xs[i + 1]} y="92" className="bbt-text">
+        <text key={`z${i}`} x={xs[i + 1]} y={dRow - 22} className="bbt-text" style={{ fontSize: fs }}>
           {dis.has(i + 1) ? "‖" : plainMath(nodeSign(i))}
         </text>
       ))}
@@ -165,12 +175,12 @@ function VariationTable({ v }: { v: VariationVisual }) {
       {Array.from({ length: n - 1 }, (_, i) => {
         const y1 = yOfNode(i, "r", vals[i]);
         const y2 = yOfNode(i + 1, "l", vals[i + 1]);
-        const x1 = xs[i] + 26;
-        const x2 = xs[i + 1] - 26;
+        const x1 = xs[i] + fs;
+        const x2 = xs[i + 1] - fs;
         if (x2 <= x1) return null;
         return (
-          <line key={`a${i}`} x1={x1} y1={y1 + (y2 > y1 ? 10 : -10)} x2={x2} y2={y2 + (y2 > y1 ? -10 : 10)}
-                stroke="#263746" strokeWidth="2.4" markerEnd={`url(#${arrowId})`} />
+          <line key={`a${i}`} x1={x1} y1={y1 + (y2 > y1 ? 14 : -14)} x2={x2} y2={y2 + (y2 > y1 ? -14 : 14)}
+                stroke="#263746" strokeWidth="3" markerEnd={`url(#${arrowId})`} />
         );
       })}
 
@@ -182,10 +192,10 @@ function VariationTable({ v }: { v: VariationVisual }) {
             <g key={`v${i}`}>
               <line x1={xs[i] - 4} x2={xs[i] - 4} y1={xRow} y2={H - 1} stroke="#263746" />
               <line x1={xs[i] + 4} x2={xs[i] + 4} y1={xRow} y2={H - 1} stroke="#263746" />
-              <text x={xs[i] - 14} y={yOfNode(i, "l", d.leftValue)} textAnchor="end" className="bbt-value">
+              <text x={xs[i] - 16} y={yOfNode(i, "l", d.leftValue)} textAnchor="end" className="bbt-value" style={{ fontSize: fs }}>
                 {plainMath(d.leftValue)}
               </text>
-              <text x={xs[i] + 14} y={yOfNode(i, "r", d.rightValue)} textAnchor="start" className="bbt-value">
+              <text x={xs[i] + 16} y={yOfNode(i, "r", d.rightValue)} textAnchor="start" className="bbt-value" style={{ fontSize: fs }}>
                 {plainMath(d.rightValue)}
               </text>
             </g>
@@ -194,7 +204,7 @@ function VariationTable({ v }: { v: VariationVisual }) {
         const y = yOfNode(i, "r", value);
         const atTop = y < (yTop + yBottom) / 2;
         return (
-          <text key={`v${i}`} x={xs[i]} y={atTop ? y - 6 : y + 18} className="bbt-value">
+          <text key={`v${i}`} x={xs[i]} y={atTop ? y - 10 : y + fs} className="bbt-value" style={{ fontSize: fs }}>
             {plainMath(value)}
           </text>
         );
@@ -210,38 +220,41 @@ function VariationTable({ v }: { v: VariationVisual }) {
 function SignChart({ v }: { v: SignVisual }) {
   const n = Math.max(2, v.x.length);
   const rows = v.rows?.length ? v.rows : [{ label: v.label || "f(x)", signs: v.signs ?? [] }];
-  const W = 860;
-  const rowH = 46;
-  const H = 52 + rows.length * rowH;
-  const L = 96;
-  const padIn = 38;
-  const step = (W - L - padIn - 26) / (n - 1);
+  const W = SC_W;
+  const rowH = SC_ROW_H;
+  const H = SC_HEAD + rows.length * rowH;
+  const fs = svgFontPx(W, H);
+  // Nhãn hàng ("x + 2", "f(x)") nay to gấp 2,5 lần nên cột trái phải rộng theo,
+  // nếu không chữ đè lên vạch dọc ngăn cột.
+  const L = 186;
+  const padIn = 48;
+  const step = (W - L - padIn - 62) / (n - 1);
   const xs = Array.from({ length: n }, (_, i) => L + padIn + i * step);
 
   return (
     <svg className="sign-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Bảng xét dấu">
       <rect x="1" y="1" width={W - 2} height={H - 2} fill="#fff" stroke="#263746" strokeWidth="1.6" />
       <line x1={L} x2={L} y1="1" y2={H - 1} stroke="#263746" strokeWidth="1.6" />
-      <line x1="1" x2={W - 1} y1="50" y2="50" stroke="#263746" />
-      <text x={L / 2} y="34" className="bbt-label">x</text>
+      <line x1="1" x2={W - 1} y1={SC_HEAD} y2={SC_HEAD} stroke="#263746" />
+      <text x={L / 2} y={SC_HEAD - 20} className="bbt-label" style={{ fontSize: fs + 1 }}>x</text>
       {xs.map((x, i) => (
-        <text key={i} x={x} y="34" className="bbt-text">{plainMath(v.x[i] ?? "")}</text>
+        <text key={i} x={x} y={SC_HEAD - 20} className="bbt-text" style={{ fontSize: fs }}>{plainMath(v.x[i] ?? "")}</text>
       ))}
       {rows.map((row, r) => {
-        const yBase = 50 + (r + 1) * rowH;
+        const yBase = SC_HEAD + (r + 1) * rowH;
         const signs = row.signs ?? [];
         const full = signs.length >= 2 * n - 3;
         return (
           <g key={r}>
             {r < rows.length - 1 && <line x1="1" x2={W - 1} y1={yBase} y2={yBase} stroke="#263746" />}
-            <text x={L / 2} y={yBase - 14} className="bbt-label">{row.label}</text>
+            <text x={L / 2} y={yBase - 18} className="bbt-label" style={{ fontSize: fs + 1 }}>{row.label}</text>
             {Array.from({ length: n - 1 }, (_, i) => (
-              <text key={`s${i}`} x={(xs[i] + xs[i + 1]) / 2} y={yBase - 12} className="bbt-sign">
+              <text key={`s${i}`} x={(xs[i] + xs[i + 1]) / 2} y={yBase - 16} className="bbt-sign" style={{ fontSize: fs + 3 }}>
                 {plainMath((full ? signs[i * 2] : signs[i]) ?? "")}
               </text>
             ))}
             {Array.from({ length: Math.max(0, n - 2) }, (_, i) => (
-              <text key={`z${i}`} x={xs[i + 1]} y={yBase - 12} className="bbt-text">
+              <text key={`z${i}`} x={xs[i + 1]} y={yBase - 16} className="bbt-text" style={{ fontSize: fs }}>
                 {plainMath((full ? signs[i * 2 + 1] : "0") ?? "0")}
               </text>
             ))}
@@ -306,9 +319,15 @@ function Graph({ v }: { v: GraphVisual }) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const clipId = `graphClip${uid}`;
   const axisId = `axisArrow${uid}`;
-  const W = 720;
-  const H = 420;
-  const p = 42;
+  /**
+   * Khung 900×405 gần đúng tỉ lệ ô chứa trên slide (11,8 × 5,26 in), nên đồ thị
+   * dùng hết chỗ và hệ số thu xấp xỉ 0,94 — nhờ vậy chữ 34 px trong hình ra
+   * đúng 32 pt trên slide. V11.5 để 12 px, tức chỉ 10 pt: nhìn từ bàn hai đã mờ.
+   */
+  const W = GRAPH_W;
+  const H = GRAPH_H;
+  const fs = svgFontPx(W, H);
+  const p = 84;
   const xMin = v.xMin, xMax = v.xMax, yMin = v.yMin, yMax = v.yMax;
   const sx = (x: number) => p + ((x - xMin) * (W - 2 * p)) / (xMax - xMin);
   const sy = (y: number) => H - p - ((y - yMin) * (H - 2 * p)) / (yMax - yMin);
@@ -330,6 +349,27 @@ function Graph({ v }: { v: GraphVisual }) {
   for (let t = Math.ceil(xMin / stepX) * stepX; t <= xMax + 1e-9; t += stepX) gridX.push(Number(t.toFixed(6)));
   const gridY: number[] = [];
   for (let t = Math.ceil(yMin / stepY) * stepY; t <= yMax + 1e-9; t += stepY) gridY.push(Number(t.toFixed(6)));
+
+  /**
+   * Chữ trên trục nay to gấp gần ba lần, các nhãn sẽ chồng lên nhau. Giữ nguyên
+   * vạch lưới (để học sinh vẫn đọc được toạ độ) nhưng chỉ GHI SỐ ở một phần
+   * các vạch.
+   *
+   * Điều kiện: chỉ ghi ở những vạch là bội của bước × k. Nếu chỉ lấy cách một
+   * vạch theo chỉ số thì gặp trường hợp bước 0,5 sẽ ra dãy 0,5 / 1,5 / 2,5 —
+   * đúng về khoảng cách nhưng không ai dạy Toán lại chia trục như thế.
+   */
+  const keepEvery = (list: number[], step: number, need: number, span: number) => {
+    const room = Math.max(1, Math.floor(span / Math.max(1, need)));
+    let k = 1;
+    while (list.filter((t) => Math.abs(t / (step * k) - Math.round(t / (step * k))) < 1e-6).length > room) k++;
+    return list.filter((t) => Math.abs(t / (step * k) - Math.round(t / (step * k))) < 1e-6);
+  };
+  const labelledX = gridX.filter((t) => Math.abs(t) > 1e-9);
+  const labelledY = gridY.filter((t) => Math.abs(t) > 1e-9);
+  const widestX = Math.max(2, ...labelledX.map((t) => String(t).length));
+  const tickX = keepEvery(labelledX, stepX, widestX * fs * 0.62 + 12, W - 2 * p);
+  const tickY = keepEvery(labelledY, stepY, fs * 1.6, H - 2 * p);
 
   // vùng tô (dạy diện tích hình phẳng / tích phân)
   let shadePath = "";
@@ -359,8 +399,8 @@ function Graph({ v }: { v: GraphVisual }) {
         <clipPath id={clipId}>
           <rect x={p} y={p} width={W - 2 * p} height={H - 2 * p} />
         </clipPath>
-        <marker id={axisId} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-          <path d="M0,0 L8,4 L0,8 Z" fill="#263746" />
+        <marker id={axisId} markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+          <path d="M0,0 L10,5 L0,10 Z" fill="#263746" />
         </marker>
       </defs>
 
@@ -373,7 +413,7 @@ function Graph({ v }: { v: GraphVisual }) {
       {shadePath && <path d={shadePath} fill="#0F766E22" stroke="none" clipPath={`url(#${clipId})`} />}
 
       {/* trục */}
-      <g stroke="#263746" strokeWidth="1.6">
+      <g stroke="#263746" strokeWidth="2.2">
         {yMin <= 0 && yMax >= 0 && (
           <line x1={p} x2={W - p + 6} y1={sy(0)} y2={sy(0)} markerEnd={`url(#${axisId})`} />
         )}
@@ -381,16 +421,16 @@ function Graph({ v }: { v: GraphVisual }) {
           <line y1={H - p} y2={p - 6} x1={sx(0)} x2={sx(0)} markerEnd={`url(#${axisId})`} />
         )}
       </g>
-      <g className="graph-tick">
-        {gridX.filter((t) => Math.abs(t) > 1e-9).map((t, i) => (
-          <text key={`tx${i}`} x={sx(t)} y={(yMin <= 0 && yMax >= 0 ? sy(0) : H - p) + 16} textAnchor="middle">{t}</text>
+      <g className="graph-tick svg-halo" style={{ fontSize: fs }}>
+        {tickX.map((t, i) => (
+          <text key={`tx${i}`} x={sx(t)} y={(yMin <= 0 && yMax >= 0 ? sy(0) : H - p) + fs + 6} textAnchor="middle">{t}</text>
         ))}
-        {gridY.filter((t) => Math.abs(t) > 1e-9).map((t, i) => (
-          <text key={`ty${i}`} x={(xMin <= 0 && xMax >= 0 ? sx(0) : p) - 8} y={sy(t) + 4} textAnchor="end">{t}</text>
+        {tickY.map((t, i) => (
+          <text key={`ty${i}`} x={(xMin <= 0 && xMax >= 0 ? sx(0) : p) - 12} y={sy(t) + fs / 3} textAnchor="end">{t}</text>
         ))}
       </g>
-      <text x={W - p + 4} y={(yMin <= 0 && yMax >= 0 ? sy(0) : H - p) - 8} className="axis-name">{v.xLabel || "x"}</text>
-      <text x={(xMin <= 0 && xMax >= 0 ? sx(0) : p) + 8} y={p - 10} className="axis-name">{v.yLabel || "y"}</text>
+      <text x={W - p + 6} y={(yMin <= 0 && yMax >= 0 ? sy(0) : H - p) - 12} className="axis-name svg-halo" style={{ fontSize: fs + 2 }}>{v.xLabel || "x"}</text>
+      <text x={(xMin <= 0 && xMax >= 0 ? sx(0) : p) + 12} y={p - 12} className="axis-name svg-halo" style={{ fontSize: fs + 2 }}>{v.yLabel || "y"}</text>
 
       {/* tiệm cận */}
       {v.asymptotes?.map((a, i) => {
@@ -411,37 +451,70 @@ function Graph({ v }: { v: GraphVisual }) {
       <g clipPath={`url(#${clipId})`}>
         {rendered.map((r, i) =>
           r.paths.map((d, j) => (
-            <path key={`${i}-${j}`} d={d} fill="none" stroke={r.color} strokeWidth="2.8"
-                  strokeDasharray={r.dashed ? "8 6" : undefined} strokeLinecap="round" />
+            <path key={`${i}-${j}`} d={d} fill="none" stroke={r.color} strokeWidth="4"
+                  strokeDasharray={r.dashed ? "10 7" : undefined} strokeLinecap="round" />
           )),
         )}
       </g>
 
       {/* điểm đặc biệt */}
-      {v.points?.map((q, i) => (
-        <g key={i}>
-          <circle cx={sx(q.x)} cy={sy(q.y)} r="5.5" fill={pointFill[q.kind || "plain"]} stroke="#fff" strokeWidth="1.5" />
-          <text x={sx(q.x) + 9} y={sy(q.y) - 9} className="graph-point-label">
-            {q.label || `(${q.x}; ${q.y})`}
-          </text>
-        </g>
-      ))}
+      {v.points?.map((q, i) => {
+        /**
+         * Nhãn điểm đặt THẲNG TRÊN hoặc THẲNG DƯỚI chấm, không đặt chéo sang
+         * phải như V11.5. Ở cỡ chữ 34 px, nhãn "CĐ(-1; 3)" dài gần 200 px —
+         * đặt chéo là đè lên trục Oy và nuốt mất số trên trục.
+         * Cực tiểu ghi xuống dưới, còn lại ghi lên trên: đó là phía luôn trống.
+         */
+        const label = q.label || `(${q.x}; ${q.y})`;
+        const below = q.kind === "min";
+        const half = (label.length * fs * 0.54) / 2;
+        let cx = Math.min(Math.max(sx(q.x), p + half), W - p - half);
+
+        /**
+         * Hai chỗ nhãn hay đè lên số trên trục, đều chỉ lộ ra khi chữ to:
+         *  - điểm nằm sát trục Ox (cực trị có tung độ 0): nhãn ghi xuống dưới sẽ
+         *    rơi đúng vào hàng số của trục hoành -> đẩy xuống thêm một dòng;
+         *  - điểm nằm sát trục Oy (hoành độ 0): nhãn canh giữa sẽ phủ lên số
+         *    trên trục tung -> lệch hẳn sang một bên.
+         */
+        const axisY = yMin <= 0 && yMax >= 0 ? sy(0) : H - p;
+        const axisX = xMin <= 0 && xMax >= 0 ? sx(0) : p;
+        const chamTrucNgang = Math.abs(sy(q.y) - axisY) < fs * 1.2;
+        if (Math.abs(sx(q.x) - axisX) < half) {
+          const sangPhai = sx(q.x) + half * 2 + fs * 0.5 < W - p;
+          cx = sangPhai ? axisX + half + fs * 0.6 : axisX - half - fs * 0.6;
+        }
+        return (
+          <g key={i}>
+            <circle cx={sx(q.x)} cy={sy(q.y)} r="8" fill={pointFill[q.kind || "plain"]} stroke="#fff" strokeWidth="2" />
+            <text
+              x={cx}
+              y={sy(q.y) + (below ? fs * (chamTrucNgang ? 2.35 : 1.2) : -fs * 0.55)}
+              textAnchor="middle"
+              className="graph-point-label svg-halo"
+              style={{ fontSize: fs }}
+            >
+              {label}
+            </text>
+          </g>
+        );
+      })}
 
       {/* chú giải nhiều đồ thị */}
       {rendered.length > 1 && (
-        <g className="graph-legend">
+        <g className="graph-legend svg-halo" style={{ fontSize: fs }}>
           {rendered.map((r, i) => (
-            <g key={i} transform={`translate(${p + 8}, ${p + 14 + i * 20})`}>
-              <line x1="0" x2="22" y1="0" y2="0" stroke={r.color} strokeWidth="3"
-                    strokeDasharray={r.dashed ? "6 4" : undefined} />
-              <text x="28" y="4">{r.label || r.expression}</text>
+            <g key={i} transform={`translate(${p + 10}, ${p + fs + i * (fs + 10)})`}>
+              <line x1="0" x2="34" y1="0" y2="0" stroke={r.color} strokeWidth="4"
+                    strokeDasharray={r.dashed ? "8 5" : undefined} />
+              <text x="42" y={fs / 3}>{r.label || r.expression}</text>
             </g>
           ))}
         </g>
       )}
 
       {errors.length > 0 && (
-        <text x={W / 2} y={H / 2} textAnchor="middle" className="graph-error">
+        <text x={W / 2} y={H / 2} textAnchor="middle" className="graph-error" style={{ fontSize: fs }}>
           ⚠ Không đọc được biểu thức: {errors[0].error}
         </text>
       )}
