@@ -2,10 +2,11 @@
 
 Bản này được viết đè lên mã nguồn V10 và **đã build + kiểm thử thành công**.
 
-**Bản hiện tại: V11.6** — `next build` sạch, 39/39 kiểm thử đạt, 19/19 loại hình
-Toán có chữ ≥ 32 pt khi in lên slide, xuất thử 31 slide mở được bằng LibreOffice
-và không khối chữ nào tràn khung. Xem mục 5 để biết cách tự chạy lại các phép đo
-này.
+**Bản hiện tại: V11.7** — `next build` sạch, 39/39 kiểm thử đạt, 22/22 loại hình
+Toán có chữ nền ≥ 32 pt khi in lên slide, hai bài giảng mẫu xuất thử (31 slide
+mỗi bài) mở được bằng LibreOffice, không khối chữ nào tràn khung và mọi khối
+công thức giữ đúng cỡ chữ đã chốt. Xem mục 5 và mục 6 để tự chạy lại các phép
+đo này.
 
 ## 1. Tệp mới và tệp thay đổi
 
@@ -27,7 +28,11 @@ này.
 | `app/v11.css` | **mới** | Cỡ chữ đạt chuẩn tiếp cận + style cho hình mới |
 | `app/layout.tsx`, `next.config.ts` | sửa | Nạp CSS mới; xử lý `node:fs` của pptxgenjs; V11.6 thêm `suppressHydrationWarning` cho thẻ `<html>` để dẹp cảnh báo do tiện ích Chrome chèn class `mdl-js` |
 | `lib/slides.ts` | viết lại ở V11.6 | Thang cỡ chữ `TYPO`, bố cục "chữ trên – hình dưới", chia slide theo sức chứa, `svgFontPx()` |
-| `scripts/` | **mới ở V11.6** | Ba script đo cỡ chữ và xuất thử PowerPoint (xem mục 5) |
+| `scripts/` | **mới ở V11.6** | Script đo cỡ chữ và xuất thử PowerPoint (xem mục 5, 6) |
+| `lib/latex.ts` | sửa ở V11.7 | Cờ `lossy`, `splitMathSegments()`, `needsRichMath()`; sửa `\lim`, `\setminus`, `\{ \}` |
+| `lib/bbt.ts` | sửa ở V11.7 | Dùng chung `lib/latex.ts`; thêm `shortLabel()`, `tableCaption()` |
+| `components/MathText.tsx` | **mới ở V11.7** | `MathText` / `MixedMath` tách riêng để quiz và bảng số liệu dùng được mà không tạo vòng lặp import |
+| `lib/prompt.ts` | sửa ở V11.7 | Quy tắc viết công thức cho bộ sinh nội dung |
 | `types/vendor.d.ts` | sửa | Khai báo module bổ sung |
 
 Tệp V10 gốc được giữ nguyên trong thư mục `_v10_backup/` của gói bàn giao.
@@ -137,7 +142,92 @@ Muốn đổi ngưỡng, sửa `TYPO.bodyMin` và `TYPO.bodyMax` trong `lib/slid
 ngược lại. Sau khi sửa, chạy lại ba script ở trên — đừng tin mắt thường, vì chữ
 trong hình bị thu theo hệ số mà mắt không ước lượng được.
 
-## 6. Việc nên làm tiếp (chưa nằm trong bản này)
+## 6. V11.7 — Công thức Toán hiển thị đúng
+
+### Vấn đề
+
+Mở tệp PowerPoint của bài "Khảo sát và vẽ đồ thị của một số hàm số cơ bản" do
+V11.6 xuất ra, đối chiếu với cách viết của sách giáo khoa:
+
+| Hiện ra trên slide | Phải là | Nguyên nhân |
+|---|---|---|
+| `y = (ax+b)/(cx+d)` | phân số hai tầng | Unicode không có phân số tổng quát, `lib/latex.ts` ép về một dòng |
+| `y_(CT)` | `y` với `CT` nhỏ bên dưới | chữ C, T không có dạng chỉ số trong Unicode |
+| `limₓ →-∞ y = +∞` | `lim` với `x→-∞` bên dưới | biểu thức chính quy bắt cận dừng ở dấu cách |
+| `x^2 - 4x + 3` trong bảng biến thiên | `x² - 4x + 3` | `plainMath()` của `lib/bbt.ts` tự viết riêng, không xử lý dấu `^` |
+| cả biểu thức nhét vào cột trái bảng biến thiên | chỉ `y` và `y′` | bộ sinh nội dung điền nhầm trường `label`, phần mềm không chặn |
+| `D = ℝ \\1\` | `D = ℝ \ {1}` | `\{` `\}` bị xoá cùng với dấu ngoặc nhọn thường |
+| tiêu đề hai dòng tràn qua đường kẻ | nằm gọn trong khung | ô tiêu đề chỉ cao 0,76 in = đúng một dòng |
+| nhãn trục `x (sả` bị cắt cụt | hiện đủ chữ | nhãn canh trái, đặt ở mép phải khung vẽ |
+| `$y = \\frac{a}{c}$` in nguyên văn trong quiz | phân số | câu hỏi trắc nghiệm in chuỗi thô, không qua bộ dựng công thức |
+
+### Cách sửa
+
+**1. Bộ chuyển LaTeX biết tự nhận là mình không đủ sức.** `latexToUnicode()` nay
+trả về thêm cờ `lossy`. Cờ bật lên khi Unicode không diễn đạt nổi: phân số tổng
+quát, chỉ số bằng chữ cái, giới hạn có cận. Nguyên tắc: thà báo "tôi không diễn
+đạt được" còn hơn in ra một thứ gần đúng mà học sinh đọc thành nghĩa khác.
+
+**2. Khối chữ có công thức được dựng bằng KaTeX rồi chụp thành ảnh.**
+`needsRichMath()` quyết định từng khối. CHỈ khối nào thật sự cần mới thành ảnh —
+bài mẫu Bài 4 có 31 slide thì 9 khối là ảnh, phần còn lại vẫn là chữ thật sửa
+được trong PowerPoint. Ảnh luôn đặt vừa bề ngang ô nên cỡ chữ giữ nguyên 32–36
+pt; nếu vì lý do nào đó phải thu theo chiều cao, bộ xuất ghi lại vào
+`lastRichMathReport` để bộ kiểm chứng bắt được (chính nhờ vậy mà phát hiện slide
+"Yêu cầu cần đạt" chưa được chia trang, đang bị thu còn 24 pt).
+
+**3. Phân số và `lim` dựng ở cỡ đầy đủ** (`\displaystyle`): phân số không bị thu
+nhỏ, cận của `lim` nằm ngay dưới chữ `lim` — đúng cách viết của SGK. Riêng ô
+chật (phương án trắc nghiệm, ô bảng số liệu) dùng cỡ giữa dòng cho gọn.
+
+**4. Bảng biến thiên.** `plainMath()` nay dùng chung `lib/latex.ts` nên `x^2` ra
+`x²`. Cột trái chỉ còn `y` và `y′`; biểu thức đầy đủ chuyển thành dòng nhãn
+`y = x² - 4x + 3` ngay trên bảng. Bảng xét dấu có cột trái tự giãn theo nhãn dài
+nhất.
+
+**5. Ô tiêu đề dành sẵn chỗ cho hai dòng.** Vùng nội dung vì thế ngắn đi 0,26 in;
+cỡ chữ trong hình tự tính lại nên vẫn đạt ngưỡng.
+
+**6. Prompt siết lại** (`lib/prompt.ts`): bắt buộc `\frac`, `\lim_{x \to a}`,
+chỉ số bọc ngoặc nhọn, và `label` của bảng biến thiên chỉ được là tên hàm ngắn.
+
+### Tự kiểm chứng
+
+```bash
+npm i -D playwright esbuild       # chỉ dùng để kiểm chứng, không phải để chạy web
+
+# Cỡ chữ bên trong 22 loại hình Toán
+npx esbuild scripts/_entry.tsx --bundle --outfile=/tmp/vis-bundle.js \
+    --format=iife --jsx=automatic --define:process.env.NODE_ENV='"production"'
+node scripts/measure-visuals.mjs
+
+# Xuất thật hai bài giảng mẫu bằng chính hàm exportPptx của ứng dụng
+npx esbuild scripts/_export-entry.tsx --bundle --outfile=/tmp/export-bundle.js \
+    --format=iife --jsx=automatic --define:process.env.NODE_ENV='"production"'
+node scripts/build-sample-pptx.mjs                    # Bài 1 — kiểm cỡ chữ
+LESSON=bai4 OUT=bai4 node scripts/build-sample-pptx.mjs   # Bài 4 — kiểm công thức
+
+# Mở tệp xuất ra, đo lại cỡ chữ từng slide
+python3 scripts/check-pptx.py .measure/bai4.pptx
+```
+
+`scripts/lesson-bai4.mjs` tái hiện đúng từng lỗi kể trong bảng trên, nên chạy lại
+là biết ngay còn sót chỗ nào.
+
+> **Lưu ý về bộ kiểm chứng:** `scripts/katex-css.mjs` nhúng phông KaTeX dưới dạng
+> data URI. Thiếu bước này thì trang kiểm chứng rơi về phông hệ thống, `ℝ` hoá
+> thành `R` và `≠` mất nét gạch — bộ kiểm chứng sẽ báo lỗi ở chỗ không có lỗi và,
+> tệ hơn, bỏ sót lỗi thật.
+
+### Điều còn hạn chế
+
+Khối chữ dựng thành ảnh KHÔNG gõ sửa được trong PowerPoint (vẫn sửa được trong
+phần mềm rồi xuất lại). Đây là đánh đổi đã cân nhắc: cách duy nhất để có công
+thức sửa được ngay trong PowerPoint là dùng định dạng Equation của Office
+(OMML), nhưng phải tự viết bộ chuyển đổi và vá lại tệp `.pptx` — sai một dấu là
+PowerPoint báo hỏng tệp, mà ở đây không có PowerPoint thật để kiểm tra.
+
+## 7. Việc nên làm tiếp (chưa nằm trong bản này)
 
 1. Bật `"strict": true` trong `tsconfig.json` rồi sửa dần các cảnh báo.
 2. Thêm ESLint config (`next lint` hiện không có cấu hình).

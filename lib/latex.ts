@@ -9,6 +9,27 @@
  *  - Dịch đầy đủ căn, phân số, mũ, chỉ số, chữ Hy Lạp, toán tử, hàm.
  *  - Lệnh chưa biết thì GIỮ NGUYÊN TÊN và báo cáo ra ngoài để kiểm định cảnh báo,
  *    tuyệt đối không xoá.
+ *
+ * ------------------------------------------------------------------------
+ * V11.7 — BIẾT KHI NÀO UNICODE LÀ KHÔNG ĐỦ
+ * ------------------------------------------------------------------------
+ * V11.6 vẫn ép mọi công thức về Unicode một dòng, kể cả khi Unicode không có
+ * ký hiệu tương ứng. Hậu quả thấy rõ trên bài giảng thật:
+ *
+ *   \frac{ax+b}{cx+d}          ->  (ax+b)/(cx+d)   (phải là phân số hai tầng)
+ *   y_{CT}                     ->  y_(CT)          (C, T không có dạng chỉ số)
+ *   \lim_{x \to -\infty}       ->  limₓ →-∞        (sai hẳn)
+ *   \mathbb{R}\setminus\{1\}   ->  ℝ ∖ \1\         (dấu \{ \} không được xử lý)
+ *
+ * V11.7 sửa hai việc:
+ *  1. Dịch đúng những gì Unicode làm được (giới hạn, tập hợp, chỉ số nhiều ký tự
+ *     dạng số, dấu ngoặc nhọn thoát).
+ *  2. TRUNG THỰC báo ra `lossy = true` khi Unicode KHÔNG diễn đạt nổi. Bộ xuất
+ *     PowerPoint đọc cờ này để dựng riêng khối chữ đó bằng KaTeX thành ảnh —
+ *     phân số hai tầng, lim có cận bên dưới, đúng như sách giáo khoa.
+ *
+ * Nguyên tắc: thà báo "tôi không diễn đạt được" còn hơn in ra một thứ gần đúng
+ * mà học sinh đọc thành nghĩa khác.
  */
 
 const GREEK: Record<string, string> = {
@@ -59,12 +80,26 @@ function toScript(text: string, map: Record<string, string>): string | null {
   return out;
 }
 
-export type LatexConvertResult = { text: string; unknownCommands: string[] };
+/**
+ * `lossy` = Unicode KHÔNG diễn đạt được đúng công thức này (phân số tổng quát,
+ * chỉ số bằng chữ cái, giới hạn có cận...). Bộ xuất PowerPoint dùng cờ này để
+ * quyết định dựng khối chữ bằng KaTeX thành ảnh thay vì in chữ thường.
+ *
+ * Kiểu PHẲNG (không phải hợp phân biệt) vì tsconfig.json của dự án đặt
+ * "strict": false — TypeScript sẽ không thu hẹp được kiểu qua boolean.
+ */
+export type LatexConvertResult = { text: string; unknownCommands: string[]; lossy: boolean };
 
 /** Chuyển một chuỗi LaTeX thuần sang Unicode đọc được. */
 export function latexToUnicode(input: string): LatexConvertResult {
   const unknown = new Set<string>();
+  let lossy = false;
   let s = String(input ?? "").normalize("NFC");
+
+  // Dấu ngoặc nhọn THOÁT (\{ \}) là ngoặc thật của tập hợp, phải giữ lại. V11.6
+  // để nguyên dấu \ rồi mới xoá { } ở cuối, nên "ℝ \setminus \{1\}" ra "ℝ ∖ \1\".
+  // Tạm thay bằng ký tự riêng, cuối hàm mới đổi về { }.
+  s = s.replace(/\\\{/g, "\u0001").replace(/\\\}/g, "\u0002");
 
   s = s.replace(/\\left|\\right|\\!|\\,|\\;|\\:/g, "");
   s = s.replace(/\\displaystyle|\\textstyle|\\limits/g, "");
@@ -88,26 +123,55 @@ export function latexToUnicode(input: string): LatexConvertResult {
     s = s.replace(/\\[dt]?frac\{([^{}]*)\}\{([^{}]*)\}/g, (_m, a, b) => {
       const key = `${a}/${b}`;
       if (NICE[key]) return NICE[key];
+      // Unicode không có phân số hai tầng tổng quát. Vẫn trả về dạng một dòng
+      // để chỗ nào cần chữ thuần (ghi chú, phiếu học tập) còn dùng được, nhưng
+      // báo lossy để slide dựng lại bằng KaTeX.
+      lossy = true;
       const wrapA = /^[0-9a-zA-Z]+$/.test(a) ? a : `(${a})`;
       const wrapB = /^[0-9a-zA-Z]+$/.test(b) ? b : `(${b})`;
       return `${wrapA}/${wrapB}`;
     });
   }
 
-  // Tích phân, tổng có cận:  \int_0^1  ->  ∫₀¹
-  s = s.replace(/\\(int|sum|prod|lim|oint)_\{?([^{}\s^]*)\}?(?:\^\{?([^{}\s]*)\}?)?/g,
-    (_m, cmd, lo, hi) => {
+  /**
+   * Toán tử có cận: \int_0^1, \sum_{i=1}^{n}, \lim_{x \to 2}.
+   *
+   * V11.6 dùng lớp ký tự [^{}\s^] nên cận DỪNG Ở DẤU CÁCH: "\lim_{x \to -\infty}"
+   * chỉ bắt được "x", phần "\to -\infty" rơi ra ngoài thành "limₓ →-∞" — sai
+   * hẳn nghĩa. Nay bắt trọn cặp ngoặc, cho phép dấu cách bên trong.
+   */
+  const braced = "\\{([^{}]*)\\}|([^{}\\s^_]+)";
+  s = s.replace(
+    new RegExp(`\\\\(int|sum|prod|lim|oint|iint)(?:_(?:${braced}))?(?:\\^(?:${braced}))?`, "g"),
+    (_m, cmd, loB, loP, hiB, hiP) => {
       const base = SYMBOLS[cmd] ?? cmd;
-      const l = toScript(String(lo ?? ""), SUB) ?? `_${lo}`;
-      const h = hi ? (toScript(String(hi), SUP) ?? `^${hi}`) : "";
-      return `${base}${l}${h}`;
-    });
+      const lo = loB ?? loP ?? "";
+      const hi = hiB ?? hiP ?? "";
+      if (!lo && !hi) return base;
+      // Chỉ số bằng Unicode chỉ đẹp khi cận ngắn và toàn chữ số. "lim" trong SGK
+      // luôn viết cận XUỐNG DƯỚI chữ lim, Unicode không làm được -> lossy.
+      const l = lo ? toScript(lo, SUB) : "";
+      const h = hi ? toScript(hi, SUP) : "";
+      if (cmd === "lim" || (lo && l === null) || (hi && h === null)) {
+        lossy = true;
+        const parts = [lo ? `${lo}` : "", hi ? `→${hi}` : ""].filter(Boolean).join(" ");
+        return lo || hi ? `${base}(${parts})` : base;
+      }
+      return `${base}${l ?? ""}${h ?? ""}`;
+    },
+  );
 
-  // Mũ và chỉ số
-  s = s.replace(/\^\{([^{}]*)\}/g, (_m, a) => toScript(a, SUP) ?? `^(${a})`);
-  s = s.replace(/\^(-?[0-9a-zA-Z])/g, (_m, a) => toScript(a, SUP) ?? `^${a}`);
-  s = s.replace(/_\{([^{}]*)\}/g, (_m, a) => toScript(a, SUB) ?? `_(${a})`);
-  s = s.replace(/_(-?[0-9a-zA-Z])/g, (_m, a) => toScript(a, SUB) ?? `_${a}`);
+  // Mũ và chỉ số. Không dịch nổi sang Unicode (ví dụ y_{CT}) thì báo lossy.
+  const script = (a: string, map: Record<string, string>, fb: string) => {
+    const t = toScript(a, map);
+    if (t !== null) return t;
+    lossy = true;
+    return `${fb}(${a})`;
+  };
+  s = s.replace(/\^\{([^{}]*)\}/g, (_m, a) => script(a, SUP, "^"));
+  s = s.replace(/\^(-?[0-9a-zA-Z])/g, (_m, a) => script(a, SUP, "^"));
+  s = s.replace(/_\{([^{}]*)\}/g, (_m, a) => script(a, SUB, "_"));
+  s = s.replace(/_(-?[0-9a-zA-Z])/g, (_m, a) => script(a, SUB, "_"));
 
   // Vectơ, gạch ngang
   s = s.replace(/\\vec\{([^{}]*)\}/g, "$1⃗").replace(/\\vec\s*([a-zA-Z])/g, "$1⃗");
@@ -120,33 +184,73 @@ export function latexToUnicode(input: string): LatexConvertResult {
     if (name in GREEK) return GREEK[name];
     if (name in SYMBOLS) return SYMBOLS[name];
     unknown.add(`\\${name}`);
+    lossy = true;
     return name; // GIỮ LẠI, không xoá
   });
 
-  s = s.replace(/[{}]/g, "").replace(/\s{2,}/g, " ").trim();
-  return { text: s, unknownCommands: [...unknown] };
+  s = s.replace(/[{}]/g, "");
+  // Trả lại dấu ngoặc nhọn thật của tập hợp: \{1\} -> {1}
+  s = s.replace(/\u0001/g, "{").replace(/\u0002/g, "}");
+  // "ℝ∖{1}" đọc dính, SGK viết "ℝ \ {1}" — chừa khoảng thở hai bên dấu hiệu.
+  s = s.replace(/\s*∖\s*/g, " ∖ ");
+  s = s.replace(/\s{2,}/g, " ").trim();
+  return { text: s, unknownCommands: [...unknown], lossy };
 }
 
+/* ------------------------------------------------------------------ */
+/* Tách đoạn văn thành phần chữ và phần công thức                      */
+/* ------------------------------------------------------------------ */
+
+export type MathSegment = { math: boolean; value: string };
+
 /**
- * Chuyển đoạn văn có công thức xen kẽ `$...$` sang Unicode.
- * Dùng cho phần chữ của slide PowerPoint.
+ * Cắt một đoạn văn thành các mảnh chữ thường và mảnh công thức.
+ * Nhận cả hai lối viết `$...$` và `\( ... \)`.
+ *
+ * Dùng chung cho: bộ xuất PowerPoint (dựng KaTeX), khung xem trước, và bộ kiểm
+ * định — để cả ba hiểu công thức nằm ở đâu giống hệt nhau.
  */
-export function mixedLatexToUnicode(input: string): LatexConvertResult {
-  const unknown = new Set<string>();
+export function splitMathSegments(input: string): MathSegment[] {
   const parts = String(input ?? "").split(/(\$[^$]*\$|\\\([\s\S]*?\\\))/g);
-  const text = parts
+  return parts
+    .filter((p) => p !== "")
     .map((part) => {
       const isMath =
         (part.startsWith("$") && part.endsWith("$") && part.length > 1) ||
         (part.startsWith("\\(") && part.endsWith("\\)"));
-      if (!isMath) return part;
-      const inner = part.startsWith("$") ? part.slice(1, -1) : part.slice(2, -2);
-      const r = latexToUnicode(inner);
+      if (!isMath) return { math: false, value: part };
+      return { math: true, value: part.startsWith("$") ? part.slice(1, -1) : part.slice(2, -2) };
+    });
+}
+
+/**
+ * Đoạn văn này có công thức mà Unicode một dòng KHÔNG diễn đạt nổi hay không?
+ *
+ * Đây là công tắc quyết định bộ xuất PowerPoint in chữ thường (sửa được trong
+ * PowerPoint) hay dựng KaTeX thành ảnh (đẹp đúng như SGK). Chỉ những chỗ thật
+ * sự cần mới thành ảnh, nhờ vậy phần lớn slide vẫn là chữ sửa được.
+ */
+export function needsRichMath(input: string): boolean {
+  return splitMathSegments(input).some((seg) => seg.math && latexToUnicode(seg.value).lossy);
+}
+
+/**
+ * Chuyển đoạn văn có công thức xen kẽ `$...$` sang Unicode.
+ * Dùng cho phần chữ của slide PowerPoint, ghi chú và phiếu học tập Word.
+ */
+export function mixedLatexToUnicode(input: string): LatexConvertResult {
+  const unknown = new Set<string>();
+  let lossy = false;
+  const text = splitMathSegments(input)
+    .map((seg) => {
+      if (!seg.math) return seg.value;
+      const r = latexToUnicode(seg.value);
       r.unknownCommands.forEach((c) => unknown.add(c));
+      if (r.lossy) lossy = true;
       return r.text;
     })
     .join("")
     .replace(/\s{2,}/g, " ")
     .trim();
-  return { text, unknownCommands: [...unknown] };
+  return { text, unknownCommands: [...unknown], lossy };
 }

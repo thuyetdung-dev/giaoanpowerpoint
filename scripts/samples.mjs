@@ -8,9 +8,17 @@ export const SAMPLES = {
   bang_bien_thien: {
     type: "variation_table",
     label: "y",
+    expression: "x^3-3x+2",
     x: ["-\\infty", "-1", "1", "+\\infty"],
     derivative: ["+", "0", "-", "0", "+"],
     values: ["-\\infty", "4", "0", "+\\infty"],
+  },
+  bang_bien_thien_nhan_sai: {
+    type: "variation_table",
+    label: "x^2 - 4x + 3",
+    x: ["-\\infty", "2", "+\\infty"],
+    derivative: ["-", "0", "+"],
+    values: ["+\\infty", "-1", "+\\infty"],
   },
   bang_xet_dau_1: {
     type: "sign_chart",
@@ -45,6 +53,13 @@ export const SAMPLES = {
     ],
     xMin: -4, xMax: 6, yMin: -4, yMax: 6,
   },
+  do_thi_nhan_truc_dai: {
+    type: "graph",
+    expression: "2+4/x",
+    xMin: 0.2, xMax: 10, yMin: 0, yMax: 7,
+    xLabel: "x (sản phẩm)", yLabel: "f(x) (triệu đồng)",
+    asymptotes: [{ kind: "horizontal", value: 2 }],
+  },
   cong_thuc: { type: "formula", latex: "\\int_0^1 (x^2+1)\\,dx = \\frac{4}{3}", caption: "Công thức Newton – Leibniz" },
   bang_so_lieu: {
     type: "data_table",
@@ -55,10 +70,16 @@ export const SAMPLES = {
   },
   trac_nghiem: {
     type: "quiz",
-    question: "Hàm số y = x³ − 3x + 1 đồng biến trên khoảng nào sau đây?",
-    options: ["(−∞; −1)", "(−1; 1)", "(0; 2)", "(−1; +∞)"],
+    question: "Hàm số $y = x^{3} - 3x + 1$ đồng biến trên khoảng nào sau đây?",
+    options: ["$(-\\infty; -1)$", "$(-1; 1)$", "$(0; 2)$", "$(-1; +\\infty)$"],
     answerIndex: 0,
-    explanation: "y′ = 3x² − 3 > 0 khi x < −1 hoặc x > 1.",
+    explanation: "$y' = 3x^{2} - 3 > 0$ khi $x < -1$ hoặc $x > 1$.",
+  },
+  trac_nghiem_phan_so: {
+    type: "quiz",
+    question: "Hàm số $y = \\frac{ax+b}{cx+d}$ có tiệm cận ngang là đường nào?",
+    options: ["$y = \\frac{a}{c}$", "$x = -\\frac{d}{c}$", "$y = \\frac{b}{d}$", "$y = 0$"],
+    answerIndex: 0,
   },
   bieu_do_cot: {
     type: "stat_chart",

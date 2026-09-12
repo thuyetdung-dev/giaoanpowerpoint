@@ -14,12 +14,17 @@
 
 import { chromium } from "playwright";
 import { readFileSync } from "node:fs";
-import { LESSON } from "./lesson-sample.mjs";
+import { katexCssWithFonts } from "./katex-css.mjs";
+/* Chọn bài giảng qua biến môi trường LESSON:
+     (mặc định) lesson-sample.mjs — Bài 1, dùng kiểm tra cỡ chữ
+     bai4                        — Bài 4, dùng kiểm tra công thức Toán */
+const mod = process.env.LESSON === "bai4" ? "./lesson-bai4.mjs" : "./lesson-sample.mjs";
+const { LESSON } = await import(mod);
 
 const css = ["globals", "bbt", "features", "reference", "v9-layout", "v11", "slide"]
   .map((n) => readFileSync(new URL(`../app/${n}.css`, import.meta.url), "utf8"))
   .join("\n");
-const katexCss = readFileSync(new URL("../node_modules/katex/dist/katex.min.css", import.meta.url), "utf8");
+const katexCss = katexCssWithFonts();
 const bundle = readFileSync("/tmp/export-bundle.js", "utf8");
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || "/opt/pw-browsers/chromium" });
@@ -46,7 +51,7 @@ await page.evaluate((lesson) => {
   document.getElementById("root").innerHTML = `<div class="export-staging" aria-hidden="true">${html}</div>`;
 }, LESSON);
 
-const target = new URL("../.measure/bai_giang_V11_6.pptx", import.meta.url).pathname;
+const target = new URL(`../.measure/${process.env.OUT || "bai_giang_V11_6"}.pptx`, import.meta.url).pathname;
 const waitDownload = page.waitForEvent("download", { timeout: 120000 });
 await page.evaluate(
   ({ lesson }) =>
@@ -61,5 +66,18 @@ const download = await waitDownload;
 await download.saveAs(target);
 
 const count = await page.evaluate((lesson) => window.buildDeck(lesson, {}).length, LESSON);
+const rich = await page.evaluate(() => window.richMathReport());
 await browser.close();
+
 console.log(`Đã dựng ${count} slide -> ${target}`);
+if (rich.length) {
+  const nho = rich.filter((r) => r.actualPt < 31.9);
+  console.log(`\n${rich.length} khối chữ được dựng bằng KaTeX (phân số, lim, chỉ số chữ).`);
+  if (nho.length) {
+    console.log(`✗ ${nho.length} khối bị thu nhỏ dưới 32 pt:`);
+    nho.forEach((r) => console.log(`   ${r.actualPt} pt (đặt ${r.targetPt})  “${r.text}”`));
+    process.exitCode = 1;
+  } else {
+    console.log("✓ Mọi khối công thức giữ đúng cỡ chữ đã chốt.");
+  }
+}

@@ -16,7 +16,7 @@ import { MathVisual, MixedMath } from "./MathVisuals";
 import type { Lesson } from "@/lib/types";
 import { getTheme, PHASE_META, VISUAL_LABEL, type Theme } from "@/lib/themes";
 import {
-  IN, LAYOUT, SLIDE_H_IN, SLIDE_W_IN, TYPO, textBandBox, visualBox, visualImageBox,
+  IN, LAYOUT, SLIDE_H_IN, SLIDE_W_IN, TYPO, objectivesBox, textBandBox, visualBox, visualImageBox,
   type Box, type DeckMeta, type SlideSpec,
 } from "@/lib/slides";
 
@@ -214,14 +214,9 @@ export function SlideBoard({
   if (spec.kind === "objectives") {
     return (
       <div className="sl-body" style={{ background: `#${t.bg}` }}>
-        <Chrome t={t} title="Yêu cầu cần đạt" number={number} />
+        <Chrome t={t} title={`Yêu cầu cần đạt${spec.part ? " (tiếp)" : ""}`} number={number} />
         <Footer t={t} lesson={lesson} />
-        <Bullets
-          t={t}
-          items={spec.items}
-          size={spec.bodyPt}
-          box={{ x: LAYOUT.textOnly.bullets.x - 1.4, y: LAYOUT.textOnly.bullets.y, w: LAYOUT.textOnly.bullets.w + 1.4, h: LAYOUT.textOnly.bullets.h }}
-        />
+        <Bullets t={t} items={spec.items} size={spec.bodyPt} box={objectivesBox()} />
       </div>
     );
   }

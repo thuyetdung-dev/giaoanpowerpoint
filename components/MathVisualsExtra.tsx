@@ -16,6 +16,7 @@ import type {
   VennVisual, TableVisual, QuizVisual,
 } from "@/lib/types";
 import { NL_HEAD, NL_ROW_H, NL_W, svgFontPx } from "@/lib/slides";
+import { MixedMath } from "./MathText";
 
 const PALETTE = ["#17324D", "#E4572E", "#0E8A72", "#F2A541", "#6C63A6", "#3C8DAD", "#B91C1C", "#1D4ED8"];
 
@@ -808,17 +809,17 @@ function DataTable({ v }: { v: TableVisual }) {
     <div className="data-table-wrap">
       <table className="data-table">
         <thead>
-          <tr>{v.headers.map((h, i) => <th key={i}>{h}</th>)}</tr>
+          <tr>{v.headers.map((h, i) => <th key={i}><MixedMath value={h} compact /></th>)}</tr>
         </thead>
         <tbody>
           {v.rows.map((row, i) => (
             <tr key={i} className={v.highlightRow === i ? "hl" : undefined}>
-              {row.map((cell, j) => <td key={j}>{cell}</td>)}
+              {row.map((cell, j) => <td key={j}><MixedMath value={cell} compact /></td>)}
             </tr>
           ))}
         </tbody>
       </table>
-      {v.caption && <small className="visual-caption">{v.caption}</small>}
+      {v.caption && <small className="visual-caption"><MixedMath value={v.caption} /></small>}
     </div>
   );
 }
@@ -832,7 +833,7 @@ function Quiz({ v }: { v: QuizVisual }) {
   const revealed = picked !== null;
   return (
     <div className="quiz-card">
-      <p className="quiz-question">{v.question}</p>
+      <p className="quiz-question"><MixedMath value={v.question} compact /></p>
       <div className="quiz-options">
         {v.options.map((o, i) => {
           const correct = i === v.answerIndex;
@@ -840,12 +841,12 @@ function Quiz({ v }: { v: QuizVisual }) {
           return (
             <button key={i} type="button" className={`quiz-option${cls}`} onClick={() => setPicked(i)}>
               <b>{String.fromCharCode(65 + i)}</b>
-              <span>{o}</span>
+              <span><MixedMath value={o} compact /></span>
             </button>
           );
         })}
       </div>
-      {revealed && v.explanation && <p className="quiz-explain">💡 {v.explanation}</p>}
+      {revealed && v.explanation && <p className="quiz-explain">💡 <MixedMath value={v.explanation} compact /></p>}
       {v.timer ? <small className="quiz-timer">⏱ Thời gian gợi ý: {v.timer} giây</small> : null}
     </div>
   );

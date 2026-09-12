@@ -21,7 +21,6 @@
  */
 
 import { useId } from "react";
-import katex from "katex";
 import { compileExpression, detectPoles } from "@/lib/mathexpr";
 import type {
   GraphVisual,
@@ -31,52 +30,24 @@ import type {
   FormulaVisual,
 } from "@/lib/types";
 import { ExtraVisual, isExtraVisual } from "./MathVisualsExtra";
-import { computeLevels, isMinusInf, isPlusInf, plainMath } from "@/lib/bbt";
-import { GRAPH_H, GRAPH_W, SC_HEAD, SC_ROW_H, SC_W, VT_H, VT_W, svgFontPx } from "@/lib/slides";
+import { computeLevels, isMinusInf, isPlusInf, plainMath, shortLabel, tableCaption } from "@/lib/bbt";
+import { GRAPH_H, GRAPH_W, SC_HEAD, SC_ROW_H, SC_W, VT_CAPTION_H, VT_H, VT_W, svgFontPx } from "@/lib/slides";
 
 /* ------------------------------------------------------------------ */
 /* Công thức                                                           */
 /* ------------------------------------------------------------------ */
 
-export const MathText = ({ value, display = false }: { value: string; display?: boolean }) => (
-  <span
-    className={display ? "math display" : "math"}
-    dangerouslySetInnerHTML={{
-      __html: katex.renderToString(String(value ?? ""), {
-        throwOnError: false,
-        displayMode: display,
-        strict: "ignore",
-        trust: false,
-        output: "html",
-      }),
-    }}
-  />
-);
-
-/** Đoạn văn có công thức xen kẽ $...$ */
-export function MixedMath({ value }: { value: string }) {
-  const clean = String(value ?? "").normalize("NFC").replace(/`\s+/g, " ");
-  const parts = clean.split(/(\$[^$]+\$|\\\([\s\S]*?\\\))/g);
-  return (
-    <>
-      {parts.map((part, i) => {
-        const math =
-          part.startsWith("$") && part.endsWith("$")
-            ? part.slice(1, -1)
-            : part.startsWith("\\(") && part.endsWith("\\)")
-            ? part.slice(2, -2)
-            : null;
-        return math !== null ? <MathText key={i} value={math} /> : <span key={i}>{part}</span>;
-      })}
-    </>
-  );
-}
+/* MathText và MixedMath chuyển sang components/MathText.tsx — dùng chung với
+   MathVisualsExtra.tsx mà không tạo vòng lặp import. Vẫn xuất lại ở đây để mã
+   cũ (SlideView, app/page.tsx) khỏi phải sửa. */
+export { MathText, MixedMath } from "./MathText";
+import { MathText, MixedMath } from "./MathText";
 
 function Formula({ v }: { v: FormulaVisual }) {
   return (
     <div className={`formula-block${v.highlight ? " highlight" : ""}`}>
       <MathText value={v.latex} display={v.display ?? true} />
-      {v.caption ? <small className="visual-caption">{v.caption}</small> : null}
+      {v.caption ? <small className="visual-caption"><MixedMath value={v.caption} /></small> : null}
     </div>
   );
 }
@@ -99,14 +70,22 @@ function VariationTable({ v }: { v: VariationVisual }) {
    * bề ngang slide) và tính NGƯỢC cỡ chữ từ ô chứa bằng svgFontPx().
    */
   const W = VT_W;
-  const H = VT_H;
+  /**
+   * Dòng nhãn "y = x² - 4x + 3" đặt PHÍA TRÊN bảng, đúng cách trình bày của sách
+   * giáo khoa. Bộ sinh nội dung hay nhét cả biểu thức vào cột trái; ở cỡ chữ mới
+   * nó tràn qua vạch dọc và đè lên cột giá trị (xem bài giảng Bài 4, slide 07).
+   */
+  const caption = tableCaption(v);
+  const capH = caption ? VT_CAPTION_H : 0;
+  const H = VT_H + capH;
   const fs = svgFontPx(W, H);
+  const name = shortLabel(v.label, "y");
   const L = 120;
-  const xRow = 62;
-  const dRow = 132;
+  const xRow = capH + 62;
+  const dRow = capH + 132;
   // yBottom phải chừa đủ một dòng chữ phía dưới, nếu không giá trị ở đáy bảng
   // (thường là -∞) bị mép khung cắt mất — lỗi này chỉ lộ ra khi chữ to lên.
-  const yTop = 176;
+  const yTop = capH + 176;
   const yBottom = H - 46;
 
   const n = Math.max(2, v.x.length);
@@ -143,14 +122,18 @@ function VariationTable({ v }: { v: VariationVisual }) {
         </marker>
       </defs>
 
-      <rect x="1" y="1" width={W - 2} height={H - 2} fill="#fff" stroke="#263746" strokeWidth="1.6" />
-      <line x1={L} x2={L} y1="1" y2={H - 1} stroke="#263746" strokeWidth="1.6" />
+      <rect width={W} height={H} fill="#fff" />
+      {caption && (
+        <text x="2" y={fs} className="bbt-caption" style={{ fontSize: fs }}>{caption}</text>
+      )}
+      <rect x="1" y={capH + 1} width={W - 2} height={H - capH - 2} fill="#fff" stroke="#263746" strokeWidth="1.6" />
+      <line x1={L} x2={L} y1={capH + 1} y2={H - 1} stroke="#263746" strokeWidth="1.6" />
       <line x1="1" x2={W - 1} y1={xRow} y2={xRow} stroke="#263746" />
       <line x1="1" x2={W - 1} y1={dRow} y2={dRow} stroke="#263746" />
 
       <text x={L / 2} y={xRow - 18} className="bbt-label" style={{ fontSize: fs + 1 }}>x</text>
-      <text x={L / 2} y={dRow - 22} className="bbt-label" style={{ fontSize: fs + 1 }}>{v.label ? `${v.label}′` : "y′"}</text>
-      <text x={L / 2} y={(yTop + yBottom) / 2 + fs / 3} className="bbt-label" style={{ fontSize: fs + 1 }}>{v.label ?? "y"}</text>
+      <text x={L / 2} y={dRow - 22} className="bbt-label" style={{ fontSize: fs + 1 }}>{`${name}′`}</text>
+      <text x={L / 2} y={(yTop + yBottom) / 2 + fs / 3} className="bbt-label" style={{ fontSize: fs + 1 }}>{name}</text>
 
       {/* hàng x */}
       {xs.map((x, i) => (
@@ -224,9 +207,14 @@ function SignChart({ v }: { v: SignVisual }) {
   const rowH = SC_ROW_H;
   const H = SC_HEAD + rows.length * rowH;
   const fs = svgFontPx(W, H);
-  // Nhãn hàng ("x + 2", "f(x)") nay to gấp 2,5 lần nên cột trái phải rộng theo,
-  // nếu không chữ đè lên vạch dọc ngăn cột.
-  const L = 186;
+  /**
+   * Nhãn hàng trong bảng xét dấu CHÍNH LÀ biểu thức ("x - 1", "x + 2", "f(x)") —
+   * đó là cách trình bày của SGK, không được rút gọn. Nhưng ở cỡ chữ mới chúng
+   * dài gấp 2,5 lần, nên cột trái phải TỰ GIÃN theo nhãn dài nhất, nếu không chữ
+   * đè lên vạch dọc ngăn cột.
+   */
+  const longest = Math.max(1, ...rows.map((r) => plainMath(r.label || "").length), 1);
+  const L = Math.min(W * 0.42, Math.max(186, longest * fs * 0.58 + 36));
   const padIn = 48;
   const step = (W - L - padIn - 62) / (n - 1);
   const xs = Array.from({ length: n }, (_, i) => L + padIn + i * step);
@@ -247,7 +235,7 @@ function SignChart({ v }: { v: SignVisual }) {
         return (
           <g key={r}>
             {r < rows.length - 1 && <line x1="1" x2={W - 1} y1={yBase} y2={yBase} stroke="#263746" />}
-            <text x={L / 2} y={yBase - 18} className="bbt-label" style={{ fontSize: fs + 1 }}>{row.label}</text>
+            <text x={L / 2} y={yBase - 18} className="bbt-label" style={{ fontSize: fs + 1 }}>{plainMath(row.label)}</text>
             {Array.from({ length: n - 1 }, (_, i) => (
               <text key={`s${i}`} x={(xs[i] + xs[i + 1]) / 2} y={yBase - 16} className="bbt-sign" style={{ fontSize: fs + 3 }}>
                 {plainMath((full ? signs[i * 2] : signs[i]) ?? "")}
@@ -429,8 +417,13 @@ function Graph({ v }: { v: GraphVisual }) {
           <text key={`ty${i}`} x={(xMin <= 0 && xMax >= 0 ? sx(0) : p) - 12} y={sy(t) + fs / 3} textAnchor="end">{t}</text>
         ))}
       </g>
-      <text x={W - p + 6} y={(yMin <= 0 && yMax >= 0 ? sy(0) : H - p) - 12} className="axis-name svg-halo" style={{ fontSize: fs + 2 }}>{v.xLabel || "x"}</text>
-      <text x={(xMin <= 0 && xMax >= 0 ? sx(0) : p) + 12} y={p - 12} className="axis-name svg-halo" style={{ fontSize: fs + 2 }}>{v.yLabel || "y"}</text>
+      {/* Tên trục căn theo MÉP KHUNG, không theo mũi tên. V11.6 đặt tên trục
+          hoành ở x = W - p + 6 với lối canh trái, nên nhãn dài như "x (sản
+          phẩm)" chạy thẳng ra ngoài slide và bị cắt cụt. */}
+      <text x={W - 8} y={(yMin <= 0 && yMax >= 0 ? sy(0) : H - p) - 14} textAnchor="end"
+            className="axis-name svg-halo" style={{ fontSize: fs + 2 }}>{v.xLabel || "x"}</text>
+      <text x={Math.min((xMin <= 0 && xMax >= 0 ? sx(0) : p) + 14, W - 8)} y={Math.max(fs + 4, p - 14)}
+            textAnchor="start" className="axis-name svg-halo" style={{ fontSize: fs + 2 }}>{v.yLabel || "y"}</text>
 
       {/* tiệm cận */}
       {v.asymptotes?.map((a, i) => {

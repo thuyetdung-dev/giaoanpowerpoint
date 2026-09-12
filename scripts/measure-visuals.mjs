@@ -12,17 +12,17 @@
 
 import { chromium } from "playwright";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { katexCssWithFonts } from "./katex-css.mjs";
 import { SAMPLES } from "./samples.mjs";
 
-/* Ô ảnh trên slide, quy ra point — khớp với lib/slides.ts */
-const IMG_W_PT = (12.1 - 0.3) * 72; // 849,6
-const IMG_H_PT = (5.64 - 0.3 - 0.08) * 72; // 378,7
+/* Ô ảnh trên slide, quy ra point. Số lấy TỪ CHÍNH lib/slides.ts qua bundle, để
+   khi bố cục đổi thì bộ đo đổi theo, không phải nhớ sửa hai chỗ. */
 const TARGET_PT = 32;
 
 const css = ["globals", "bbt", "features", "reference", "v9-layout", "v11", "slide"]
   .map((n) => readFileSync(new URL(`../app/${n}.css`, import.meta.url), "utf8"))
   .join("\n");
-const katexCss = readFileSync(new URL("../node_modules/katex/dist/katex.min.css", import.meta.url), "utf8");
+const katexCss = katexCssWithFonts();
 const bundle = readFileSync("/tmp/vis-bundle.js", "utf8");
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || "/opt/pw-browsers/chromium" });
@@ -39,7 +39,8 @@ mkdirSync(new URL("../.measure/", import.meta.url), { recursive: true });
 const rows = [];
 for (const [name, visual] of Object.entries(SAMPLES)) {
   const result = await page.evaluate(
-    ({ visual, IMG_W_PT, IMG_H_PT }) => {
+    ({ visual }) => {
+      const { IMG_W_PT, IMG_H_PT } = window.IMG_BOX;
       const stage = document.getElementById("stage");
       stage.innerHTML = `<article><div class="visual-grid"><div class="visual-card ${visual.type}" data-visual-key="0-0">${window.renderVisual(visual)}</div></div></article>`;
       const card = stage.querySelector(".visual-card");
@@ -58,13 +59,23 @@ for (const [name, visual] of Object.entries(SAMPLES)) {
       }
       const scale = Math.min(IMG_W_PT / w, IMG_H_PT / h);
 
-      // Mọi cỡ chữ xuất hiện trong hình, kèm mẫu chữ để biết đó là gì.
+      /**
+       * Đo CỠ CHỮ NỀN — cỡ mà học sinh đọc dòng chữ.
+       *
+       * Không đo từng mảnh bên trong công thức: số mũ, tử và mẫu của phân số
+       * vốn nhỏ hơn chữ nền (khoảng 0,7 lần) theo đúng quy ước sắp chữ Toán,
+       * sách in cũng vậy. Đòi chúng đạt 32 pt thì phải phóng cả công thức lên
+       * gần gấp rưỡi, slide sẽ không chứa nổi. Vì thế với hình dựng bằng HTML
+       * chỉ lấy cỡ chữ của các Ô CHỨA DÒNG (p, li, ô bảng, phương án trắc
+       * nghiệm), còn phần bên trong .katex thì bỏ qua.
+       */
       const seen = new Map();
-      const nodes = svg ? svg.querySelectorAll("text") : card.querySelectorAll("*");
+      const nodes = svg
+        ? svg.querySelectorAll("text")
+        : card.querySelectorAll("p, li, td, th, .quiz-option > span, .quiz-option > b, .visual-caption, .formula-block > .math");
       nodes.forEach((el) => {
         const text = (el.textContent || "").replace(/[\u200b\u00a0\s]+/g, " ").trim();
         if (!text) return;
-        if (!svg && el.children.length) return; // chỉ lấy nút lá với HTML
         const px = parseFloat(getComputedStyle(el).fontSize);
         if (!px) return;
         const key = Math.round(px);
@@ -75,7 +86,7 @@ for (const [name, visual] of Object.entries(SAMPLES)) {
         sizes: [...seen.entries()].map(([px, sample]) => ({ px, sample })).sort((a, b) => a.px - b.px),
       };
     },
-    { visual, IMG_W_PT, IMG_H_PT },
+    { visual },
   );
 
   const sizes = result.sizes.map((s) => ({ ...s, pt: +(s.px * result.scale).toFixed(1) }));

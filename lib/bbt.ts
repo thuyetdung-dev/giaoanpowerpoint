@@ -7,17 +7,54 @@
  */
 
 import type { VariationVisual } from "./types";
+import { latexToUnicode } from "./latex";
 
+/**
+ * Chuyển một ô của bảng biến thiên sang chữ hiển thị.
+ *
+ * V11.6 tự viết lấy một bộ thay thế thô sơ ở đây, KHÔNG xử lý dấu mũ, nên nhãn
+ * "x^2 - 4x + 3" in ra đúng y như thế trên slide — học sinh đọc thành "x mũ 2"
+ * hay "x^2"? V11.7 dùng chung lib/latex.ts với phần còn lại của phần mềm, nên
+ * "x^2" ra "x²", "\infty" ra "∞", và mọi chỗ trong bài giảng nhất quán.
+ */
 export function plainMath(s: string): string {
-  return String(s ?? "")
-    .replace(/\\infty/g, "∞")
-    .replace(/\\pm/g, "±")
-    .replace(/\\mp/g, "∓")
-    .replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, "$1/$2")
-    .replace(/\\sqrt\{([^{}]*)\}/g, "√($1)")
-    .replace(/\\[a-zA-Z]+/g, (m) => m.slice(1))
-    .replace(/[{}]/g, "")
-    .trim();
+  // Ô của bảng biến thiên viết LaTeX TRẦN ("-\\infty", "x^2-4x+3"), không bọc
+  // trong $...$, nên phải dịch cả chuỗi chứ không dùng mixedLatexToUnicode.
+  return latexToUnicode(String(s ?? "")).text;
+}
+
+/**
+ * Nhãn cột trái của bảng biến thiên: chỉ được là tên hàm ngắn (y, f, g...).
+ *
+ * Bộ sinh nội dung hay điền nhầm cả biểu thức vào đây ("x^2 - 4x + 3"), và ở cỡ
+ * chữ 33 px thì nó tràn qua vạch dọc, đè lên cột giá trị — xem ảnh bài giảng
+ * Bài 4. Hàm này cắt nhãn về dạng dùng được; biểu thức đầy đủ được bộ dựng đưa
+ * lên dòng nhãn PHÍA TRÊN bảng, đúng cách trình bày của sách giáo khoa.
+ */
+export function shortLabel(raw: string | undefined, fallback: string): string {
+  const t = plainMath(raw ?? "").trim();
+  if (!t) return fallback;
+  // Đã gọn (y, f, f(x), y₁...) thì giữ nguyên.
+  if (t.length <= 4 && !/[+\-=]/.test(t)) return t;
+  const m = t.match(/^([a-zA-Zα-ωΑ-Ω][₀-₉0-9]*)\s*(\([^()]*\))?\s*=/);
+  if (m) return m[1] + (m[2] ?? "");
+  return fallback;
+}
+
+/** Bảng này có dòng nhãn phía trên hay không — dùng để tính chiều cao khung vẽ. */
+export function hasTableCaption(v: VariationVisual): boolean {
+  return tableCaption(v) !== "";
+}
+
+/** Biểu thức đầy đủ để ghi thành dòng nhãn phía trên bảng (rỗng nếu không có). */
+export function tableCaption(v: VariationVisual): string {
+  const name = shortLabel(v.label, "y");
+  const expr = plainMath(v.expression ?? "").trim();
+  if (expr) return `${name} = ${expr}`;
+  // label dài chính là biểu thức mà bộ sinh nội dung đặt nhầm chỗ.
+  const raw = plainMath(v.label ?? "").trim();
+  if (raw && raw !== name) return raw.includes("=") ? raw : `${name} = ${raw}`;
+  return "";
 }
 
 export function isPlusInf(s: string) {

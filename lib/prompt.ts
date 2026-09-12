@@ -75,6 +75,16 @@ NGUYÊN TẮC SƯ PHẠM (bắt buộc tuân thủ):
 - Ít nhất 55% số slide phải có visual. Slide chỉ toàn chữ là điểm trừ.
 - Nội dung chữ dùng câu ngắn, tối đa 5 ý mỗi slide, không viết đoạn văn dài.
 - Mọi công thức trong "content", "notes", "questions" phải đặt trong cặp $...$ (LaTeX). Phần còn lại viết tiếng Việt chuẩn chính tả, có dấu.
+
+QUY TẮC VIẾT CÔNG THỨC (sai những điều này thì slide in ra sai môn Toán):
+- Phân số PHẢI viết bằng \\frac{tử}{mẫu}, KHÔNG viết gạch chéo. Đúng: $y=\\frac{ax+b}{cx+d}$. Sai: $y=(ax+b)/(cx+d)$.
+- Giới hạn PHẢI viết \\lim_{x \\to a} với cận trong cặp ngoặc nhọn. Đúng: $\\lim_{x \\to -\\infty} y = +\\infty$. Sai: $\\lim_x \\to -\\infty$.
+- Chỉ số dưới bằng chữ phải bọc ngoặc nhọn: $y_{CT}$, $x_{0}$, $S_{ABC}$.
+- Số mũ bọc ngoặc nhọn khi nhiều hơn một ký tự: $x^{2}$, $x^{n+1}$.
+- Tập hợp: dùng \\mathbb{R} và \\setminus, dấu ngoặc nhọn của tập phải thoát. Đúng: $D=\\mathbb{R}\\setminus\\{1\\}$.
+- Trường "label" của variation_table và sign_chart CHỈ ghi TÊN HÀM ngắn ("y", "f(x)", "f'(x)"), TUYỆT ĐỐI không nhét cả biểu thức vào đó. Biểu thức đầy đủ đặt ở trường "expression" (ví dụ "x^3-3x+2"); phần mềm sẽ tự ghi thành dòng "y = x³ - 3x + 2" phía trên bảng.
+- Trường "heading" nên dưới 46 ký tự để tiêu đề không phải xuống dòng lần thứ ba.
+- Nhãn trục đồ thị ("xLabel", "yLabel") nên ngắn: "x (sản phẩm)" được, "số lượng sản phẩm sản xuất trong tháng" thì quá dài.
 - Dùng đúng thuật ngữ SGK 2018: "bảng biến thiên", "điểm cực đại", "giá trị lớn nhất", "mẫu số liệu ghép nhóm", "tứ phân vị", "xác suất có điều kiện", "vectơ", "phép chiếu vuông góc".
 - Không bịa số liệu từ tài liệu nguồn người dùng cung cấp; nếu tài liệu không nói, hãy dùng số liệu tự tạo và ghi rõ là ví dụ minh hoạ.
 

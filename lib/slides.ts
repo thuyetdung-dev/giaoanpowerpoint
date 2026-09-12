@@ -31,7 +31,8 @@
  */
 
 import type { Lesson, Section, Visual } from "./types";
-import { mixedLatexToUnicode } from "./latex";
+import { mixedLatexToUnicode, needsRichMath } from "./latex";
+import { hasTableCaption } from "./bbt";
 
 /* ------------------------------------------------------------------ */
 /* Thang cỡ chữ — NGUỒN DUY NHẤT                                       */
@@ -119,11 +120,26 @@ function displayLength(text: string): number {
   }
 }
 
+/**
+ * Chiều cao PHỤ TRỘI của các công thức dựng bằng KaTeX, tính theo số dòng.
+ *
+ * Một phân số hai tầng cao gần gấp 2,2 lần dòng chữ thường; "lim" có cận bên
+ * dưới cao gấp rưỡi. Không cộng thêm thì khối chữ tính ra vừa ô nhưng dựng thật
+ * lại tràn xuống dưới đáy slide.
+ */
+function extraLines(text: string): number {
+  const raw = String(text ?? "");
+  const count = (re: RegExp) => (raw.match(re) || []).length;
+  // Số đo lấy từ bản dựng thật: một phân số cỡ đầy đủ (\displaystyle) chiếm
+  // khoảng 2,4 dòng chữ, tức cao THÊM 1,4 dòng. "lim" có cận nằm dưới thêm 0,9.
+  return count(/\\[dt]?frac\b/g) * 1.4 + count(/\\(?:lim|int|sum|prod|oint)_/g) * 0.9 + count(/\\sqrt\[/g) * 0.3;
+}
+
 /** Số dòng mà một đoạn chữ chiếm khi đặt vào ô rộng `wIn` inch ở cỡ `pt`. */
 export function lineCount(text: string, wIn: number, pt: number): number {
   const usable = Math.max(0.5, wIn - BULLET_INDENT_IN);
   const perLine = Math.max(6, Math.floor((usable * 72) / (pt * CHAR_EM)));
-  return Math.max(1, Math.ceil(displayLength(text) / perLine));
+  return Math.max(1, Math.ceil(displayLength(text) / perLine)) + extraLines(text);
 }
 
 /** Chiều cao (inch) của cả khối gạch đầu dòng. */
@@ -193,9 +209,17 @@ export const IN = 96;
 export const SLIDE_W_IN = 13.333;
 export const SLIDE_H_IN = 7.5;
 
-/** Vùng nội dung: từ dưới đường kẻ tiêu đề xuống tới trên chân slide. */
-export const BAND = { x: 0.62, y: 1.38, w: 12.1, bottom: 7.02 };
-export const BAND_H = BAND.bottom - BAND.y; // 5,64 in
+/**
+ * Vùng nội dung: từ dưới đường kẻ tiêu đề xuống tới trên chân slide.
+ *
+ * V11.6 để đường kẻ ở 1,22 in và ô tiêu đề chỉ cao 0,76 in — vừa đúng MỘT dòng
+ * ở cỡ 32 pt. Tiêu đề dài hai dòng (rất hay gặp: "Ví dụ 2: Khảo sát hàm số
+ * y = x³ + 3x + 1 (tiếp)") liền tràn qua đường kẻ và đè lên thanh màu bên trái.
+ * V11.7 dành sẵn chỗ cho HAI dòng tiêu đề: chắc chắn không tràn, đổi lại vùng
+ * nội dung ngắn đi 0,26 in — hình vẫn đạt ngưỡng 32 pt vì svgFontPx() tính lại.
+ */
+export const BAND = { x: 0.62, y: 1.64, w: 12.1, bottom: 7.02 };
+export const BAND_H = BAND.bottom - BAND.y; // 5,38 in
 
 /** Lề trong của mỗi khung, và chiều cao dành cho nhãn phía trên hình. */
 const PAD = 0.26;
@@ -205,11 +229,12 @@ const GAP = 0.16;
 
 export const LAYOUT = {
   topBar: { x: 0, y: 0, w: SLIDE_W_IN, h: 0.14 },
-  accentBar: { x: 0.58, y: 0.5, w: 0.14, h: 0.66 },
-  title: { x: 0.88, y: 0.4, h: 0.76, wWide: 10.9, wNarrow: 8.6, pt: TYPO.title },
-  badge: { x: 9.62, y: 0.52, w: 2.3, h: 0.5, pt: TYPO.badge },
-  pageNo: { x: 12.05, y: 0.58, w: 0.7, h: 0.38, pt: TYPO.pageNo },
-  divider: { x: 0.58, y: 1.22, w: 12.17 },
+  accentBar: { x: 0.58, y: 0.3, w: 0.14, h: 1.14 },
+  /** Cao 1,24 in = đủ HAI dòng ở cỡ 32 pt. Căn giữa theo chiều dọc. */
+  title: { x: 0.88, y: 0.26, h: 1.22, wWide: 10.9, wNarrow: 8.6, pt: TYPO.title },
+  badge: { x: 9.62, y: 0.34, w: 2.3, h: 0.5, pt: TYPO.badge },
+  pageNo: { x: 12.05, y: 0.4, w: 0.7, h: 0.38, pt: TYPO.pageNo },
+  divider: { x: 0.58, y: 1.5, w: 12.17 },
   footer: { y: 7.16, h: 0.24, pt: TYPO.footer },
 
   /** Khối nội dung khi slide KHÔNG có hình. */
@@ -220,8 +245,18 @@ export const LAYOUT = {
   },
 
   /** Dòng nhắc trên slide "(tiếp)". */
-  contPanel: { x: BAND.x, y: 1.26, w: 6, h: 0.34, pt: TYPO.contPanel },
+  contPanel: { x: BAND.x, y: 1.54, w: 6, h: 0.34, pt: TYPO.contPanel },
 } as const;
+
+/**
+ * Ô chữ của slide "Yêu cầu cần đạt" — rộng hơn slide nội dung vì không có số
+ * thứ tự mục in to bên trái. Khai báo một chỗ để bộ dựng danh sách slide, bộ
+ * xuất và khung xem trước dùng đúng cùng con số.
+ */
+export function objectivesBox(): Box {
+  const b = LAYOUT.textOnly.bullets;
+  return { x: b.x - 1.4, y: b.y, w: b.w + 1.4, h: b.h };
+}
 
 /** Khối chữ trải hết bề ngang, nằm TRÊN hình. Chiều cao tuỳ số dòng. */
 export function textBandBox(bandH: number) {
@@ -269,7 +304,8 @@ export function visualCanvas(v: Visual): { w: number; h: number } {
   const anyV = v as any;
   switch (v.type) {
     case "variation_table":
-      return { w: VT_W, h: VT_H };
+      // Có dòng nhãn "y = x² - 4x + 3" phía trên thì khung vẽ cao thêm một dòng.
+      return { w: VT_W, h: VT_H + (hasTableCaption(v) ? VT_CAPTION_H : 0) };
     case "sign_chart": {
       const rows = Math.max(1, (anyV.rows?.length || 1) as number);
       return { w: SC_W, h: SC_HEAD + rows * SC_ROW_H };
@@ -319,6 +355,8 @@ export function visualAspect(v: Visual): number {
 /* --- Khung vẽ chuẩn của các hình dựng bằng SVG --- */
 export const VT_W = 880;
 export const VT_H = 300;
+/** Chiều cao dòng nhãn đặt phía trên bảng biến thiên. */
+export const VT_CAPTION_H = 54;
 export const SC_W = 880;
 export const SC_HEAD = 66;
 export const SC_ROW_H = 58;
@@ -376,7 +414,7 @@ const MIN_BAND_H = (TYPO.bodyMin * LINE_EM) / 72 + PAD * 1.4;
 
 export type SlideSpec =
   | { kind: "cover" }
-  | { kind: "objectives"; items: string[]; bodyPt: number }
+  | { kind: "objectives"; items: string[]; bodyPt: number; richMath: boolean; part: number }
   | { kind: "divider"; phase: string }
   | {
       kind: "content";
@@ -388,6 +426,12 @@ export type SlideSpec =
       bullets: string[];
       /** Cỡ chữ đã chốt cho khối chữ này — luôn ≥ TYPO.bodyMin. */
       bodyPt: number;
+      /**
+       * true = khối chữ này chứa công thức mà chữ Unicode một dòng không diễn
+       * đạt nổi (phân số, lim có cận...). Bộ xuất sẽ dựng cả khối bằng KaTeX
+       * thành ảnh thay vì in chữ thường. Xem needsRichMath() trong lib/latex.ts.
+       */
+      richMath: boolean;
       /** Chiều cao khối chữ (inch). 0 khi slide không có chữ. */
       bandH: number;
       /** Tối đa MỘT hình mỗi slide. */
@@ -429,6 +473,7 @@ export function planSection(section: Section, sectionIndex: number): SlideSpec[]
       part: i,
       bullets: page,
       bodyPt: pt,
+      richMath: page.some(needsRichMath),
       bandH: 0,
       showNumber: i === 0,
     }));
@@ -448,6 +493,7 @@ export function planSection(section: Section, sectionIndex: number): SlideSpec[]
     part,
     bullets: [],
     bodyPt: TYPO.bodyMin,
+    richMath: false,
     bandH: 0,
     visual: v,
     showNumber: false,
@@ -462,7 +508,8 @@ export function planSection(section: Section, sectionIndex: number): SlideSpec[]
       const out: SlideSpec[] = [
         {
           kind: "content", section, sectionIndex, part: 0,
-          bullets, bodyPt: pt, bandH: Math.max(MIN_BAND_H, whole), visual: first, showNumber: false,
+          bullets, bodyPt: pt, richMath: bullets.some(needsRichMath),
+          bandH: Math.max(MIN_BAND_H, whole), visual: first, showNumber: false,
         },
       ];
       visuals.slice(1).forEach((v, i) => out.push(visualOnly(v, i + 1)));
@@ -485,12 +532,13 @@ export function planSection(section: Section, sectionIndex: number): SlideSpec[]
       pages.slice(0, -1).forEach((page, i) => {
         out.push({
           kind: "content", section, sectionIndex, part: part++,
-          bullets: page, bodyPt: ptFull, bandH: 0, showNumber: i === 0,
+          bullets: page, bodyPt: ptFull, richMath: page.some(needsRichMath), bandH: 0, showNumber: i === 0,
         });
       });
       out.push({
         kind: "content", section, sectionIndex, part: part++,
-        bullets: tail, bodyPt: tailPt, bandH: Math.max(MIN_BAND_H, tailH), visual: first,
+        bullets: tail, bodyPt: tailPt, richMath: tail.some(needsRichMath),
+        bandH: Math.max(MIN_BAND_H, tailH), visual: first,
         showNumber: pages.length === 1,
       });
       visuals.slice(1).forEach((v) => out.push(visualOnly(v, part++)));
@@ -506,7 +554,7 @@ export function planSection(section: Section, sectionIndex: number): SlideSpec[]
     paginate(bullets, textBox.w, textBox.h, pt).forEach((page, i) => {
       out.push({
         kind: "content", section, sectionIndex, part: part++,
-        bullets: page, bodyPt: pt, bandH: 0, showNumber: i === 0,
+        bullets: page, bodyPt: pt, richMath: page.some(needsRichMath), bandH: 0, showNumber: i === 0,
       });
     });
   }
@@ -518,9 +566,17 @@ export function buildDeck(lesson: Lesson, meta: DeckMeta = {}): SlideSpec[] {
   const deck: SlideSpec[] = [{ kind: "cover" }];
 
   if (meta.includeObjectives !== false && lesson.objectives?.length) {
-    const box = LAYOUT.textOnly.bullets;
+    /**
+     * Slide "Yêu cầu cần đạt" cũng phải CHIA TRANG như slide nội dung. V11.6 đổ
+     * hết yêu cầu vào một slide; với bài có nhiều công thức (Bài 4 có ba phân
+     * số) khối chữ cao gấp rưỡi ô chứa, và khi dựng thành ảnh nó bị thu lại còn
+     * 24 pt — đúng cái mà cả bản nâng cấp này đang chống.
+     */
+    const box = objectivesBox();
     const pt = fitBodyPt(lesson.objectives, box.w, box.h);
-    deck.push({ kind: "objectives", items: lesson.objectives, bodyPt: pt });
+    paginate(lesson.objectives, box.w, box.h, pt).forEach((page, i) => {
+      deck.push({ kind: "objectives", items: page, bodyPt: pt, richMath: page.some(needsRichMath), part: i });
+    });
   }
 
   let lastPhase: string | undefined;

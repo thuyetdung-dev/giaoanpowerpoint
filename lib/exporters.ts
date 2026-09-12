@@ -33,9 +33,9 @@
 
 import type { Lesson, Visual } from "./types";
 import { getTheme, PHASE_META, VISUAL_LABEL, type Theme } from "./themes";
-import { latexToUnicode, mixedLatexToUnicode } from "./latex";
+import { latexToUnicode, mixedLatexToUnicode, needsRichMath, splitMathSegments } from "./latex";
 import {
-  LAYOUT, SLIDE_W_IN, TYPO, buildDeck, textBandBox, toBullets as splitBullets,
+  LAYOUT, SLIDE_W_IN, TYPO, buildDeck, objectivesBox, textBandBox, toBullets as splitBullets,
   visualBox, visualImageBox, type Box,
 } from "./slides";
 
@@ -137,9 +137,9 @@ export async function svgToPng(svg: SVGSVGElement, scale = 3): Promise<{ data: s
 }
 
 /** Với thẻ không phải SVG (công thức KaTeX, bảng số liệu) mới cần html2canvas. */
-async function htmlToPng(node: HTMLElement, scale = 3): Promise<{ data: string; w: number; h: number }> {
+async function htmlToPng(node: HTMLElement, scale = 3, bg = "#ffffff"): Promise<{ data: string; w: number; h: number }> {
   const { default: html2canvas } = await import("html2canvas");
-  const canvas = await html2canvas(node, { scale, backgroundColor: "#ffffff", useCORS: true, logging: false });
+  const canvas = await html2canvas(node, { scale, backgroundColor: bg, useCORS: true, logging: false });
   return { data: canvas.toDataURL("image/png"), w: canvas.width / scale, h: canvas.height / scale };
 }
 
@@ -150,6 +150,98 @@ async function nodeToPng(node: HTMLElement): Promise<{ data: string; w: number; 
     return await htmlToPng(node);
   } catch {
     return null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Dựng công thức Toán bằng KaTeX                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Bề rộng (px) của khung dựng tạm. Ảnh chụp ra được đặt vừa bề ngang ô chữ trên
+ * slide, nên cỡ chữ thật trên slide = px × (bề_ngang_ô_tính_bằng_pt / số này).
+ * Chọn 1600 px: đủ nét khi chụp ở 2x mà vẫn nhẹ.
+ */
+const RICH_W_PX = 1600;
+
+/**
+ * Nhật ký của lần xuất gần nhất. Khối chữ dựng thành ảnh KHÔNG đo được cỡ chữ
+ * bằng cách mở tệp .pptx ra đọc (nó là ảnh, không phải chữ), nên bộ xuất tự ghi
+ * lại: mỗi khối đã in ra bao nhiêu point thật. scripts/build-sample-pptx.mjs
+ * đọc mảng này để báo lỗi nếu có khối nào tụt dưới ngưỡng 32 pt.
+ */
+export type RichMathReport = { text: string; targetPt: number; actualPt: number };
+export const lastRichMathReport: RichMathReport[] = [];
+
+/**
+ * Dựng một khối chữ có công thức thành ảnh.
+ *
+ * VÌ SAO PHẢI LÀM THẾ. PowerPoint chỉ nhận chữ thường trong một ô văn bản, mà
+ * Unicode không có phân số hai tầng, cũng không có chỉ số bằng chữ cái, cũng
+ * không đặt được cận xuống dưới chữ "lim". V11.6 vì thế in ra "(ax+b)/(cx+d)"
+ * và "limₓ →-∞" — sai so với cách viết của sách giáo khoa.
+ *
+ * Ở đây khối chữ được dàn bằng KaTeX (chính bộ dựng đã cho ra công thức đẹp ở
+ * slide "CÔNG THỨC") rồi chụp lại thành ảnh. Chỉ những khối CÓ công thức kiểu ấy
+ * mới thành ảnh — xem needsRichMath() — nên phần lớn slide vẫn là chữ thật, sửa
+ * được trong PowerPoint.
+ */
+async function richTextPng(
+  stage: HTMLElement,
+  items: string[],
+  boxWIn: number,
+  pt: number,
+  t: Theme,
+  asTitle = false,
+  /** Màu nền của khung sẽ đặt ảnh. Để trắng thì ảnh hiện thành mảng trắng
+      nổi rõ trên nền panel xanh nhạt — lỗi thấy ngay trên slide. */
+  bg = "FFFFFF",
+): Promise<{ data: string; w: number; h: number } | null> {
+  if (!items.length) return null;
+  const katex = (await import("katex")).default;
+
+  const esc = (x: string) =>
+    x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const render = (raw: string) =>
+    splitMathSegments(raw)
+      .map((seg) => {
+        if (!seg.math) return esc(seg.value);
+        try {
+          /**
+           * \displaystyle: KaTeX mặc định thu nhỏ phân số khi nằm giữa dòng chữ
+           * (text style), và đẩy cận của "lim" ra sau thành chỉ số. Sách giáo
+           * khoa Toán viết phân số cỡ đầy đủ và cận nằm NGAY DƯỚI chữ lim —
+           * đúng như thầy giáo sửa tay trong bản góp ý. Cỡ đầy đủ cũng dễ nhìn
+           * hơn hẳn khi chiếu lên màn.
+           */
+          return katex.renderToString(`\\displaystyle ${seg.value}`, {
+            throwOnError: false, displayMode: false, strict: "ignore", trust: false, output: "html",
+          });
+        } catch {
+          return esc(mixedLatexToUnicode(seg.value).text);
+        }
+      })
+      .join("");
+
+  // Cỡ chữ nguồn tính ngược từ ô chứa: px × (boxW_pt / RICH_W_PX) = pt.
+  const fontPx = (pt * RICH_W_PX) / (boxWIn * 72);
+  const host = document.createElement("div");
+  host.setAttribute("data-rich-math", "1");
+  host.style.cssText = `position:absolute;left:0;top:0;width:${RICH_W_PX}px;background:#${bg};`;
+  const body = asTitle
+    ? `<p class="as-title">${render(items[0])}</p>`
+    : items.length > 1
+    ? `<ul>${items.map((b) => `<li>${render(b)}</li>`).join("")}</ul>`
+    : `<p>${render(items[0])}</p>`;
+  const face = asTitle ? t.headFont : t.bodyFont;
+  host.innerHTML =
+    `<div class="rich-math" style="width:${RICH_W_PX}px;font-size:${fontPx}px;color:#${t.ink};` +
+    `background:#${bg};font-family:'${face}',Calibri,Arial,sans-serif">${body}</div>`;
+  stage.appendChild(host);
+  try {
+    return await htmlToPng(host.firstElementChild as HTMLElement, 2, `#${bg}`);
+  } finally {
+    host.remove();
   }
 }
 
@@ -175,7 +267,31 @@ export function toBullets(raw: string): string[] {
 
 type Meta = { teacher?: string; school?: string; limitSlides?: number; includeNotes?: boolean };
 
-function addChrome(slide: any, t: Theme, index: number, title: string, phase?: string) {
+/**
+ * Tiêu đề slide cũng có thể chứa công thức ("Ví dụ 3: Khảo sát hàm số
+ * $y=\\frac{x+1}{x-1}$"). Khi đó dựng KaTeX thành ảnh y như khối chữ.
+ */
+async function addTitle(slide: any, t: Theme, raw: string, hasBadge: boolean, stage: HTMLElement) {
+  const L = LAYOUT.title;
+  const box = { x: L.x, y: L.y, w: hasBadge ? L.wNarrow : L.wWide, h: L.h };
+  if (needsRichMath(raw)) {
+    const png = await richTextPng(stage, [raw], box.w, L.pt, t, true, t.bg).catch(() => null);
+    if (png) {
+      const ratio = png.w / png.h;
+      let w = box.w;
+      let h = w / ratio;
+      if (h > box.h) { h = box.h; w = h * ratio; }
+      slide.addImage({ data: png.data, x: box.x, y: box.y + (box.h - h) / 2, w, h, altText: mixedLatexToUnicode(raw).text });
+      return;
+    }
+  }
+  slide.addText(mixedLatexToUnicode(raw).text, {
+    x: box.x, y: box.y, w: box.w, h: box.h,
+    fontFace: t.headFont, fontSize: L.pt, bold: true, color: t.ink, margin: 0, valign: "mid", fit: "shrink",
+  });
+}
+
+function addChrome(slide: any, t: Theme, index: number, phase?: string) {
   slide.background = { color: t.bg };
   const L = LAYOUT;
   slide.addShape("rect", { x: L.topBar.x, y: L.topBar.y, w: L.topBar.w, h: L.topBar.h, fill: { color: t.primary }, line: { transparency: 100 } });
@@ -184,10 +300,7 @@ function addChrome(slide: any, t: Theme, index: number, title: string, phase?: s
     x: L.accentBar.x, y: L.accentBar.y, w: L.accentBar.w, h: L.accentBar.h,
     fill: { color: meta?.color || t.accent }, line: { transparency: 100 },
   });
-  slide.addText(title, {
-    x: L.title.x, y: L.title.y, w: meta ? L.title.wNarrow : L.title.wWide, h: L.title.h,
-    fontFace: t.headFont, fontSize: L.title.pt, bold: true, color: t.ink, margin: 0, valign: "mid", fit: "shrink",
-  });
+  // Tiêu đề do addTitle() vẽ riêng, vì nó có thể phải dựng bằng KaTeX.
   if (meta) {
     slide.addShape("roundRect", {
       x: L.badge.x, y: L.badge.y, w: L.badge.w, h: L.badge.h, rectRadius: 0.24,
@@ -223,6 +336,48 @@ function addFooter(slide: any, t: Theme, lesson: Lesson) {
  * không hay biết. Ở đây lib/slides.ts đã tính trước số slide cần dùng, nên khối
  * chữ chắc chắn vừa mà không phải thu.
  */
+/**
+ * Đặt khối chữ lên slide, tự chọn giữa CHỮ THẬT và ẢNH KATEX.
+ *
+ * `rich = false` -> chữ thật, sửa được trong PowerPoint (đa số slide).
+ * `rich = true`  -> cả khối dựng bằng KaTeX rồi chụp thành ảnh, vì có phân số
+ *                   hai tầng / lim có cận / chỉ số bằng chữ cái.
+ *
+ * Ảnh luôn đặt VỪA BỀ NGANG ô, nên cỡ chữ trên slide đúng bằng `pt` đã chốt —
+ * không có chuyện ảnh bị thu lại làm chữ nhỏ đi. Nếu ảnh cao hơn ô (công thức
+ * nhiều tầng hơn dự tính) thì mới hạ theo chiều cao, và hàm báo lại để bộ kiểm
+ * chứng bắt được.
+ */
+async function addTextBlock(
+  slide: any, t: Theme, bullets: string[], box: Box, pt: number,
+  rich: boolean, stage: HTMLElement, bg: string,
+): Promise<void> {
+  if (!bullets.length) return;
+  if (rich) {
+    const png = await richTextPng(stage, bullets, box.w, pt, t, false, bg).catch(() => null);
+    if (png) {
+      const ratio = png.w / png.h;
+      let w = box.w;
+      let h = w / ratio;
+      // Ảnh cao hơn ô thì buộc phải thu theo chiều dọc, và chữ nhỏ đi theo. Ghi
+      // lại để bộ kiểm chứng bắt được, đừng để nó lặng lẽ tụt dưới 32 pt.
+      if (h > box.h) { h = box.h; w = h * ratio; }
+      lastRichMathReport.push({
+        text: bullets.map((b) => mixedLatexToUnicode(b).text).join(" ").slice(0, 60),
+        targetPt: pt,
+        actualPt: Math.round((pt * (w / box.w)) * 10) / 10,
+      });
+      slide.addImage({
+        data: png.data, x: box.x, y: box.y, w, h,
+        altText: bullets.map((b) => mixedLatexToUnicode(b).text).join(" "),
+      });
+      return;
+    }
+    // Dựng ảnh hỏng thì vẫn phải có chữ, thà xấu còn hơn slide trống.
+  }
+  addBullets(slide, t, bullets.map((b) => mixedLatexToUnicode(b).text), box, pt);
+}
+
 function addBullets(slide: any, t: Theme, bullets: string[], box: Box, pt: number) {
   if (!bullets.length) return;
   const body =
@@ -264,6 +419,7 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
    * riêng ở đây, nên xem trước một đằng, file xuất ra một nẻo. V11.6 chỉ có một
    * nguồn duy nhất là buildDeck().
    */
+  lastRichMathReport.length = 0;
   const deck = buildDeck(lesson, { teacher: meta?.teacher, school: meta?.school });
   const limit = meta?.limitSlides || Number.POSITIVE_INFINITY;
 
@@ -309,10 +465,10 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
     /* --- Slide yêu cầu cần đạt --- */
     if (spec.kind === "objectives") {
       const s = pptx.addSlide();
-      addChrome(s, t, 0, "Yêu cầu cần đạt");
+      addChrome(s, t, 0);
+      await addTitle(s, t, `Yêu cầu cần đạt${spec.part ? " (tiếp)" : ""}`, false, stage);
       addFooter(s, t, lesson);
-      const box = LAYOUT.textOnly.bullets;
-      addBullets(s, t, spec.items.map(toSlideText), { x: box.x - 1.4, y: box.y, w: box.w + 1.4, h: box.h }, spec.bodyPt);
+      await addTextBlock(s, t, spec.items, objectivesBox(), spec.bodyPt, spec.richMath, stage, t.bg);
       made++;
       continue;
     }
@@ -351,8 +507,9 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
     /* --- Slide nội dung --- */
     const section = spec.section;
     const slide = pptx.addSlide();
-    const heading = toSlideText(section.heading) + (spec.part ? " (tiếp)" : "");
-    addChrome(slide, t, slideNo++, heading, section.phase);
+    const heading = section.heading + (spec.part ? " (tiếp)" : "");
+    addChrome(slide, t, slideNo++, section.phase);
+    await addTitle(slide, t, heading, !!(section.phase && PHASE_META[section.phase]), stage);
     addFooter(slide, t, lesson);
 
     const bullets = spec.bullets.map(toSlideText);
@@ -372,7 +529,7 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
       const box = spec.showNumber
         ? LAYOUT.textOnly.bullets
         : { x: LAYOUT.textOnly.box.x + 0.33, y: LAYOUT.textOnly.bullets.y, w: LAYOUT.textOnly.box.w - 0.66, h: LAYOUT.textOnly.bullets.h };
-      addBullets(slide, t, bullets, box, spec.bodyPt);
+      await addTextBlock(slide, t, spec.bullets, box, spec.bodyPt, spec.richMath, stage, t.surface);
     } else {
       // Slide có hình: chữ ở trên (nếu có), hình trải hết bề ngang ở dưới.
       if (spec.bandH > 0 && bullets.length) {
@@ -381,7 +538,7 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
           x: band.panel.x, y: band.panel.y, w: band.panel.w, h: band.panel.h,
           rectRadius: 0.06, fill: { color: t.surface }, line: { color: t.line, width: 1 },
         });
-        addBullets(slide, t, bullets, band.bullets, spec.bodyPt);
+        await addTextBlock(slide, t, spec.bullets, band.bullets, spec.bodyPt, spec.richMath, stage, t.surface);
       }
       // V11.5 in thêm dòng "Tiếp theo phần trước" ở đây. Bỏ đi: trên slide chỉ có
       // hình nó nằm chồng lên nhãn loại hình, mà tiêu đề đã có chữ "(tiếp)".
