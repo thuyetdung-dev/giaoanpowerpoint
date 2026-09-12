@@ -3,3 +3,6 @@ node_modules
 .env*.local
 out
 *.zip
+_build
+tsconfig.tsbuildinfo
+.measure
