@@ -13,7 +13,9 @@
 import { chromium } from "playwright";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { katexCssWithFonts } from "./katex-css.mjs";
-import { SAMPLES } from "./samples.mjs";
+/* SAMPLES=hinh dùng bộ rà soát mở rộng (nhiều ca mỗi loại); để trống dùng bộ
+   một-mẫu-mỗi-loại cho phép đo cỡ chữ. */
+const { SAMPLES } = await import(process.env.SAMPLES === "hinh" ? "./samples-hinh.mjs" : "./samples.mjs");
 
 /* Ô ảnh trên slide, quy ra point. Số lấy TỪ CHÍNH lib/slides.ts qua bundle, để
    khi bố cục đổi thì bộ đo đổi theo, không phải nhớ sửa hai chỗ. */
@@ -34,7 +36,8 @@ await page.setContent(
     `<div class="export-staging" id="stage"></div><script>${bundle}</script>`,
 );
 
-mkdirSync(new URL("../.measure/", import.meta.url), { recursive: true });
+const THUMUC = process.env.SAMPLES === "hinh" ? "../.measure/hinh/" : "../.measure/";
+mkdirSync(new URL(THUMUC, import.meta.url), { recursive: true });
 
 const rows = [];
 for (const [name, visual] of Object.entries(SAMPLES)) {
@@ -95,7 +98,7 @@ for (const [name, visual] of Object.entries(SAMPLES)) {
               scale: +result.scale.toFixed(3), minPt, sizes });
 
   const card = await page.locator(".visual-card").first();
-  await card.screenshot({ path: new URL(`../.measure/${name}.png`, import.meta.url).pathname }).catch(() => {});
+  await card.screenshot({ path: new URL(`${THUMUC}${name}.png`, import.meta.url).pathname }).catch(() => {});
 }
 
 await browser.close();
@@ -115,6 +118,6 @@ for (const r of rows) {
     ok ? "ĐẠT" : "CHƯA ĐẠT  " + r.sizes.filter((s) => s.pt < TARGET_PT - 0.6).map((s) => `${s.pt}pt "${s.sample}"`).join(", "),
   );
 }
-writeFileSync(new URL("../.measure/report.json", import.meta.url), JSON.stringify(rows, null, 2));
-console.log(`\n${rows.length - bad}/${rows.length} loại hình đạt. Ảnh dựng thử nằm trong .measure/`);
+writeFileSync(new URL(`${THUMUC}report.json`, import.meta.url), JSON.stringify(rows, null, 2));
+console.log(`\n${rows.length - bad}/${rows.length} hình đạt. Ảnh dựng thử nằm trong ${THUMUC.replace("../", "")}`);
 process.exit(bad ? 1 : 0);

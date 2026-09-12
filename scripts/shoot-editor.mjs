@@ -133,5 +133,26 @@ await page.waitForTimeout(300);
 if (await page.locator(".edit-full").count()) throw new Error("Esc không đóng được ô sửa toàn màn hình.");
 console.log("Esc đóng được ô sửa toàn màn hình.");
 
+/* 10. V12.0 — Nút "Khảo sát hàm số": nhập một dòng, ra đủ ba slide */
+await page.locator(".export-actions .khaosat-btn").click();
+await page.waitForSelector(".khaosat-box", { timeout: 3000 });
+const truocKS = await page.locator(".slide-list > button").count();
+await page.locator(".khaosat-box input").fill("(x^2+2*x-2)/(x-1)");
+await shot("11-o-khao-sat", ".detail-panel");
+await page.locator(".khaosat-box .khaosat").click();
+await page.waitForTimeout(900);
+const sauKS = await page.locator(".slide-list > button").count();
+console.log(`\nKhảo sát hàm số: danh sách từ ${truocKS} lên ${sauKS} slide`);
+if (sauKS <= truocKS) throw new Error("Bấm Khảo sát hàm số mà không thêm được slide nào.");
+await shot("12-khao-sat-ket-qua");
+/* Ba slide vừa dựng: xem lần lượt để chắc chắn hình vẽ ra đúng */
+const dsSlide = page.locator(".slide-list > button:not(.auto)");
+const tong = await dsSlide.count();
+for (const [ten, lui] of [["13-ks-dao-ham", 3], ["14-ks-bang-bien-thien", 2], ["15-ks-do-thi", 1]]) {
+  await dsSlide.nth(tong - lui).click();
+  await page.waitForTimeout(400);
+  await shot(ten, ".slide-canvas");
+}
+
 await browser.close();
 console.log("\n✓ Mọi phép kiểm giao diện đều đạt. Ảnh nằm trong .measure/");

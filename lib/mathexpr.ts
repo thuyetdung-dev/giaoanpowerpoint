@@ -19,7 +19,8 @@ export type CompiledExpr = {
   error?: string;
 };
 
-type Node =
+/** Cây biểu thức. Xuất ra để lib/deriv.ts lấy đạo hàm ký hiệu (V12.0). */
+export type Node =
   | { k: "num"; v: number }
   | { k: "var" }
   | { k: "neg"; a: Node }
@@ -247,6 +248,20 @@ function evaluate(n: Node, x: number): number {
 const cache = new Map<string, CompiledExpr>();
 
 /** Biên dịch biểu thức một lần rồi tái sử dụng. */
+/**
+ * Phân tích một biểu thức thành CÂY, không biên dịch thành hàm số.
+ *
+ * Cần cho việc lấy đạo hàm KÝ HIỆU: nút "Khảo sát hàm số" phải viết được
+ * y′ = (x² − 2x)/(x − 1)² ra công thức, chứ không chỉ đưa ra mấy con số.
+ */
+export function parseExpression(raw: string): { ok: boolean; node?: Node; error?: string } {
+  try {
+    return { ok: true, node: parse(tokenize(normalizeExpression(raw))) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Biểu thức không hợp lệ" };
+  }
+}
+
 export function compileExpression(raw: string): CompiledExpr {
   const source = normalizeExpression(raw);
   const hit = cache.get(source);

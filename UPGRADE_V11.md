@@ -2,10 +2,10 @@
 
 Bản này được viết đè lên mã nguồn V10 và **đã build + kiểm thử thành công**.
 
-**Bản hiện tại: V11.9** — `next build` sạch, 82/82 kiểm thử đạt, 26/26 loại hình
-Toán có chữ nền ≥ 32 pt khi in lên slide, hai bài giảng mẫu xuất thử mở được
-bằng LibreOffice, không khối chữ nào tràn khung và mọi khối công thức giữ đúng
-cỡ chữ đã chốt. Xem mục 5, 6, 7 và 8 để tự chạy lại các phép đo này.
+**Bản hiện tại: V12.0** — `next build` sạch, 138/138 kiểm thử đạt, 26/26 loại
+hình Toán có chữ nền ≥ 32 pt khi in lên slide, 42/42 trường hợp trong bộ rà soát
+hình đều đạt, hai bài giảng mẫu xuất thử mở được bằng LibreOffice, không khối
+chữ nào tràn khung. Xem mục 5 → 9 để tự chạy lại mọi phép đo.
 
 ## 1. Tệp mới và tệp thay đổi
 
@@ -41,6 +41,13 @@ cỡ chữ đã chốt. Xem mục 5, 6, 7 và 8 để tự chạy lại các ph�
 | `lib/slides.ts` | sửa ở V11.9 | `outlineDeck()` — liệt kê TỪNG slide của bản xuất cho danh sách bên trái |
 | `app/page.tsx` | sửa ở V11.9 | Danh sách từng slide, ô sửa toàn màn hình, ô thống kê bấm được, ô hướng dẫn dữ liệu hình |
 | `scripts/shoot-editor.mjs` | **mới ở V11.9** | Mở trang thật bằng Chromium, chụp ảnh và kiểm từng chỗ vừa sửa của giao diện |
+| `lib/plot.ts` | **mới ở V12.0** | Thứ MỌI hình cần: vạch chia vừa chỗ, số theo dấu phẩy Việt Nam, xếp nhãn tránh nhau |
+| `lib/deriv.ts` | **mới ở V12.0** | Đạo hàm KÝ HIỆU, có khai triển đa thức để ra đúng dạng SGK |
+| `lib/khaosat.ts` | **mới ở V12.0** | Nút "Khảo sát hàm số": một dòng hàm số → ba slide, không qua AI |
+| `scripts/samples-hinh.mjs` | **mới ở V12.0** | Bộ rà soát 42 trường hợp hình, nhiều ca cho mỗi loại |
+| `components/MathVisualsExtra.tsx` | viết lại ở V12.0 | Hình chóp, Oxyz, vectơ, miền nghiệm, lượng giác, trục số, thống kê |
+| `lib/audit.ts` | sửa ở V12.0 | Phép kiểm riêng cho cả 16 loại hình, không chỉ bảng biến thiên và đồ thị |
+| `lib/mathexpr.ts` | sửa ở V12.0 | Xuất `parseExpression()` để lấy cây biểu thức cho đạo hàm ký hiệu |
 | `types/vendor.d.ts` | sửa | Khai báo module bổ sung |
 
 Tệp V10 gốc được giữ nguyên trong thư mục `_v10_backup/` của gói bàn giao.
@@ -389,7 +396,110 @@ Slide "(tiếp)" xem được nhưng **không sửa riêng được**: phần m�
 theo sức chứa, nên sửa là sửa cả mục, và số slide "(tiếp)" sẽ tự thay đổi theo.
 Muốn tách hẳn thành hai mục riêng thì dùng nút **NHÂN BẢN** rồi cắt nội dung.
 
-## 9. Việc nên làm tiếp (chưa nằm trong bản này)
+## 9. V12.0 — Hình đúng và rõ cho cả 16 loại, cộng nút "Khảo sát hàm số"
+
+### Vấn đề
+
+Tới V11.9 chỉ **bảng biến thiên** và **đồ thị hàm số** từng bị soi bằng toán
+học. Mười bốn loại hình còn lại — thêm vào ở V11 — chưa từng bị mở ra xem từng
+cái. Mở ra thì thấy:
+
+| Loại hình | Lỗi |
+|---|---|
+| Hình chóp | **Vẽ NGƯỢC**: `labels: ["S","A","B","C","D"]` thì S rơi xuống một đỉnh đáy, D leo lên làm đỉnh chóp — vẽ ra hình chóp D.SABC. Thêm nữa, đáy hình vuông chiếu thành hình thoi nên đỉnh sau nằm đúng trên đỉnh trước, hai nhãn đè nhau |
+| Hệ trục Oxyz | Không vạch chia nào; vectơ $\vec n(1;1;1)$ vẽ thành một mũi nhọn bé xíu ở gốc (mũi tên phóng theo bề dày nét); mặt phẳng chỉ ghi phương trình chứ không vẽ; hình chiếm 40 % khung |
+| Vectơ mặt phẳng | **Không một con số nào trên trục** nên không kiểm được $\vec u = (3;2)$; `showParallelogram` khai rồi mà **bị bỏ qua im lặng**; tên vectơ thiếu mũi |
+| Miền nghiệm | Không số trên trục; chú giải nằm **trong** khung nên đè lên chính các đường ràng buộc; nhãn hàm mục tiêu bị khung cắt |
+| Đường tròn lượng giác | Thiếu bốn điểm đặc biệt A, A′, B, B′ và chiều dương; nhãn O cưỡi lên chấm gốc |
+| Trục số | Chỉ ba vạch chia (min, giữa, max) nên không đọc được mút khoảng; các khoảng không có gì dóng lên trục |
+| Biểu đồ hộp | **Không có trục số** nên hai nhóm không so sánh được — mà so sánh là việc duy nhất của biểu đồ hộp; số ghi "5.5" theo lối Anh–Mỹ |
+| Biểu đồ cột | Tên trục tung đè lên hàng số, **mất hẳn vạch 16**: dãy vạch đọc ra 0; 4; 8; 12; 20 |
+| Biểu đồ quạt | Chữ "35 %" màu xám đậm trên múi màu navy — không đọc được |
+| Bảng xét dấu, sơ đồ cây, Oxyz, Ven, trắc nghiệm… | **Không có phép kiểm nào**: xác suất các nhánh cộng thành 1,1; tích hai xác suất ghi sai; đỉnh miền nghiệm không thoả ràng buộc; hai phương án trắc nghiệm giống nhau — tất cả lên slide mà phần mềm báo "Đạt" |
+
+### Cách sửa
+
+**1. Hình chóp vẽ theo lối SGK.** `labels[0]` là ĐỈNH, đúng cách gọi S.ABCD.
+Đáy vẽ thành **hình bình hành** (cạnh trước nằm ngang, cạnh sau đẩy lên và lệch
+phải) nên bốn đỉnh tách nhau rõ; cạnh bị khối che vẽ nét đứt. Hệ số thu tính từ
+**khung bao của mọi điểm** nên khối luôn chiếm hết chỗ — V11 đặt cứng `s = 52`.
+Nhãn đỉnh toả từ tâm đáy ra ngoài và xếp một lượt để không đè nhau. Hình nón,
+hình trụ, mặt cầu đều có đường cao, bán kính R và tâm O như SGK.
+
+**2. Mọi hình có trục đều có số trên trục.** `lib/plot.ts` (mới) gom lại phần
+mà trước đây mỗi hình tự lo một kiểu:
+- `ticksFit` / `ticksFitDoc`: nới bước chia cho tới khi nhãn không chạm nhau,
+  tính theo **chỗ có thật** trên hình. Trục ngang so bề ngang chữ, trục đứng so
+  chiều cao dòng — hai đại lượng khác nhau, dùng lẫn là ra một vạch duy nhất.
+- `soVN`: dấu **phẩy** thập phân. "5.5" trên biểu đồ hộp là lỗi không đáng có.
+- `chonChoDat`: xếp nhãn tránh hàng số trên trục, tránh nhãn khác và tránh
+  **chấm của điểm khác** — thiếu điều kiện cuối thì nhãn "CĐ(0; 2)" đứng đúng
+  chỗ chấm cực tiểu (2; 6), giáo viên đọc ra toạ độ sai hoàn toàn.
+
+**3. Bộ kiểm định phủ cả 16 loại hình.** Mỗi loại có phép kiểm riêng, và mỗi
+phép kiểm đều kèm một ca sai trong `tests.mjs` để chứng minh nó thật sự bắt được:
+xác suất nhánh cộng ≠ 1 hoặc tích sai; tứ phân vị sai thứ tự; giá trị ngoại lệ
+lại nằm trong hai đầu râu; **đỉnh miền nghiệm không thoả ràng buộc** (nay là
+LỖI chặn xuất, không còn là cảnh báo — bài quy hoạch tuyến tính lấy giá trị lớn
+nhất tại đỉnh); ô "0" của bảng xét dấu không phải nghiệm của dòng đó; tên đỉnh
+hình chóp trùng nhau; mốc lớp histogram không tăng dần; hai phương án trắc
+nghiệm giống nhau.
+
+**4. Nút "Khảo sát hàm số".** Nhập một dòng, phần mềm dựng ba slide: tập xác
+định, đạo hàm **viết thành công thức**, nghiệm $y' = 0$, bảng biến thiên, tiệm
+cận đứng / ngang / xiên, và đồ thị có điểm cực trị. **Không gọi AI** — mọi con số
+tính trực tiếp từ biểu thức, nên không có bước nào phải soi lại.
+
+Để viết được $y'$ ra công thức cần đạo hàm **ký hiệu** (`lib/deriv.ts`), có kèm
+khai triển đa thức: đạo hàm thô của $\frac{x^2+2x-2}{x-1}$ là
+$\frac{(2x+2)(x-1)-(x^2+2x-2)}{(x-1)^2}$ — đúng về toán nhưng không ai in như vậy
+lên slide. Rút gọn xong ra $\frac{x^2-2x}{(x-1)^2}$, đúng dạng SGK.
+
+| Hàm số | Phần mềm tự tính ra |
+|---|---|
+| $\frac{x+1}{x-1}$ | $y' = \frac{-2}{(x-1)^2}$; không cực trị; TCĐ $x=1$, TCN $y=1$ |
+| $\frac{x^2+2x-2}{x-1}$ | $y' = \frac{x^2-2x}{(x-1)^2}$; CĐ(0; 2), CT(2; 6); TCĐ $x=1$, TCX $y=x+3$ |
+| $\frac{-x^2+x+1}{x-2}$ | CĐ/CT tại $x=1$ và $x=3$; TCĐ $x=2$, TCX $y=-x-1$ |
+| $x^4-2x^2$ | $y' = 4x^3-4x$; CT(±1; −1), CĐ(0; 0) |
+
+Đạo hàm ký hiệu còn được **đối chiếu với đạo hàm số học** tại bốn điểm bất kỳ
+trong `tests.mjs`: hai đường tính hoàn toàn độc lập, khớp nhau thì gần như chắc
+chắn cả hai đúng.
+
+### Tự kiểm chứng
+
+```bash
+node tests.mjs                       # 138 kiểm thử
+
+# Bộ RÀ SOÁT hình: 42 trường hợp, nhiều ca cho mỗi loại
+npx esbuild scripts/_entry.tsx --bundle --outfile=/tmp/vis-bundle.js \
+    --format=iife --jsx=automatic --define:process.env.NODE_ENV='"production"'
+SAMPLES=hinh node scripts/measure-visuals.mjs     # ảnh vào .measure/hinh/
+node scripts/measure-visuals.mjs                  # bộ đo cỡ chữ, ảnh vào .measure/
+
+# Giao diện: mở trang thật rồi chụp ảnh
+npm run build && npx next start -p 3123 &
+node scripts/shoot-editor.mjs                     # ảnh vào .measure/ui-*.png
+```
+
+`scripts/samples-hinh.mjs` gồm cả những ca khó cố ý: hình chóp ghi đủ tên
+S.ABCD và hình chóp chỉ ghi tên đáy, lăng trụ ba cạnh và lập phương, chóp lục
+giác, hai nhóm biểu đồ hộp lệch thang, miền nghiệm có ràng buộc $x \ge 0,
+y \ge 0$. Chạy lại là biết ngay còn sót chỗ nào.
+
+### Điều còn hạn chế
+
+Đạo hàm ký hiệu **không** làm được hàm có dấu giá trị tuyệt đối, không lấy được
+$u^v$ khi cả cơ số lẫn số mũ chứa $x$, và không phân tích thành nhân tử (nó
+khai triển, không rút gọn phân thức). Gặp ca đó nó **nói rõ là không làm được**
+chứ không in ra một công thức gần đúng — bảng biến thiên vẫn dựng bình thường vì
+bảng được tính bằng số.
+
+Bộ kiểm định hình chỉ kiểm được những gì **tính được**. Hình chóp có tên đỉnh
+hợp lệ nhưng đề bài mô tả một quan hệ hình học khác (SA ⊥ đáy trong khi hình vẽ
+cho SA là cạnh bên) thì phần mềm không biết — chỗ đó vẫn cần mắt của giáo viên.
+
+## 10. Việc nên làm tiếp (chưa nằm trong bản này)
 
 1. Bật `"strict": true` trong `tsconfig.json` rồi sửa dần các cảnh báo.
 2. Thêm ESLint config (`next lint` hiện không có cấu hình).

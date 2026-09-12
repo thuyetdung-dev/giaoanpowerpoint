@@ -123,6 +123,9 @@ function auditSection(s: Section, index: number, out: AuditItem[]) {
 
 function auditVisual(v: Visual, section: number, visual: number, out: AuditItem[]) {
   const at = { section, visual };
+  // Phép kiểm riêng cho TỪNG loại hình, thêm ở V12.0. Chạy trước để lỗi dữ liệu
+  // hiện ra kể cả khi nhánh switch bên dưới không có gì để nói.
+  kiemHinhThem(v, at, out);
   switch (v.type) {
     case "formula": {
       if (!v.latex?.trim()) { out.push({ level: "error", code: "FORMULA_EMPTY", message: "Công thức trống.", ...at }); break; }
@@ -410,7 +413,14 @@ function auditRegion(v: RegionVisual, section: number, visual: number, out: Audi
       return c.op === "<=" || c.op === "<" ? s > c.c + eps : s < c.c - eps;
     });
     if (bad)
-      out.push({ level: "warning", code: "REGION_VERTEX", section, visual, message: `Đỉnh ${q.label || `(${q.x}; ${q.y})`} không thoả mãn ràng buộc ${bad.label || `${bad.a}x + ${bad.b}y ${bad.op} ${bad.c}`}.` });
+      /* Nâng từ CẢNH BÁO lên LỖI ở V12.0: bài quy hoạch tuyến tính lấy giá trị
+         lớn nhất TẠI ĐỈNH, nên một đỉnh không thoả ràng buộc làm sai cả bài
+         giải — không phải chuyện trình bày mà là chuyện đúng sai. */
+      out.push({
+        level: "error", code: "REGION_VERTEX", section, visual,
+        message: `Đỉnh ${q.label || `(${q.x}; ${q.y})`} KHÔNG thoả ràng buộc ${bad.label || `${bad.a}x + ${bad.b}y ${bad.op} ${bad.c}`}.`,
+        fix: "Giải hệ hai phương trình để lấy đúng giao điểm, hoặc bỏ đỉnh này khỏi danh sách.",
+      });
   });
 }
 
@@ -664,4 +674,252 @@ function fitRange(expression: string, xMin: number, xMax: number): { yMin: numbe
   const hi = ys[Math.floor(ys.length * 0.97)];
   const pad = Math.max(1, (hi - lo) * 0.18);
   return { yMin: Math.floor(lo - pad), yMax: Math.ceil(hi + pad) };
+}
+
+/* ================================================================== */
+/* V12.0 — Kiểm định cho TỪNG loại hình                                */
+/*                                                                     */
+/* Tới V11.8 chỉ bảng biến thiên và đồ thị được kiểm bằng toán học;    */
+/* mười bốn loại còn lại muốn ghi gì cũng được. Xác suất các nhánh cộng */
+/* lại thành 1,1; tứ phân vị Q₃ nhỏ hơn Q₁; đỉnh miền nghiệm không     */
+/* thoả ràng buộc nào — tất cả đều lên slide mà phần mềm báo "Đạt".    */
+/*                                                                     */
+/* Nguyên tắc giữ nguyên như V11: CHỈ BÁO, KHÔNG BỊA. Chỗ nào tính     */
+/* được thì đối chiếu; chỗ nào không thì nói rõ là không kiểm được.    */
+/* ================================================================== */
+
+/** Đọc một xác suất viết dạng chuỗi: "0,6" hoặc "0.6" hoặc "3/5". */
+function docXacSuat(raw: unknown): number {
+  const t = String(raw ?? "").replace(/\s/g, "").replace(",", ".");
+  if (!t) return NaN;
+  const phan = /^(-?\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/.exec(t);
+  if (phan) return Number(phan[1]) / Number(phan[2]);
+  const n = Number(t);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/** Gần bằng nhau, với sai số tương đối — số liệu thống kê hay làm tròn. */
+function xapXi(a: number, b: number, eps = 5e-3): boolean {
+  return Math.abs(a - b) <= Math.max(eps, Math.abs(b) * eps);
+}
+
+function kiemHinhThem(v: Visual, at: { section: number; visual: number }, out: AuditItem[]) {
+  const loi = (code: string, message: string, fix?: string) =>
+    out.push({ level: "error", code, message, ...(fix ? { fix } : {}), ...at });
+  const canh = (code: string, message: string, fix?: string) =>
+    out.push({ level: "warning", code, message, ...(fix ? { fix } : {}), ...at });
+
+  switch (v.type) {
+    case "sign_chart": {
+      const n = v.x?.length ?? 0;
+      if (n < 2) break;   // đã có SIGN_X báo ở nhánh switch chính
+      const dong = v.rows?.length ? v.rows : [{ label: v.label || "f(x)", signs: v.signs ?? [] }];
+      dong.forEach((r, i) => {
+        if ((r.signs ?? []).some((c) => c === "?" || c === ""))
+          loi("SC_UNKNOWN", `Dòng "${r.label || i + 1}" của bảng xét dấu còn ô chưa điền.`);
+        /* Ô "0" của một dòng phải là NGHIỆM của chính biểu thức dòng đó.
+           Bảng xét dấu tích (x-1)(x+2) hay bị ghi số 0 ở CẢ HAI mốc cho CẢ HAI
+           dòng, trong khi mỗi dòng chỉ triệt tiêu tại nghiệm của riêng nó; mốc
+           kia phải ghi "|". Sai chỗ này là dạy sai cách lập bảng. */
+        const bt = compileExpression(String(r.label ?? ""));
+        if (!bt.ok) return;
+        for (let k = 1; k < n - 1; k++) {
+          const x = parseBound(v.x[k]);
+          const oDau = (r.signs ?? [])[2 * k - 1];
+          if (!Number.isFinite(x) || oDau === undefined) continue;
+          const y = bt.eval(x);
+          if (!Number.isFinite(y)) continue;
+          const laNghiem = Math.abs(y) < 1e-9;
+          if (oDau === "0" && !laNghiem)
+            canh("SC_ZERO", `Dòng "${r.label}" ghi số 0 tại x = ${v.x[k]}, nhưng ${r.label} = ${y.toFixed(3)} ≠ 0 ở đó.`,
+                 'Mốc không phải nghiệm của dòng này thì ghi dấu "|" theo lối SGK.');
+          if (oDau !== "0" && oDau !== "||" && laNghiem)
+            canh("SC_ZERO", `Dòng "${r.label}" triệt tiêu tại x = ${v.x[k]} nhưng bảng không ghi số 0 ở đó.`);
+        }
+      });
+      break;
+    }
+
+    case "stat_chart": {
+      if (!v.labels?.length) { loi("CHART_LABELS", "Biểu đồ chưa có tên cho các cột / phần."); break; }
+      if (v.chart === "pie") {
+        const gt = v.series?.[0]?.values ?? [];
+        if (gt.some((x) => x < 0)) loi("PIE_NEG", "Biểu đồ hình quạt không nhận số âm.");
+        if (!gt.some((x) => x > 0)) loi("PIE_ZERO", "Mọi số liệu đều bằng 0, không vẽ được hình quạt.");
+        if ((v.series?.length ?? 0) > 1)
+          canh("PIE_MULTI", "Hình quạt chỉ vẽ được một dãy số liệu; các dãy sau sẽ bị bỏ qua.");
+      }
+      if (v.chart === "histogram") {
+        const b2 = v.bins ?? [];
+        if (b2.length < 2)
+          canh("HIST_BINS", "Tần số ghép nhóm cần khai mốc lớp ở trường bins, ví dụ [150, 155, 160, 165].");
+        for (let i = 1; i < b2.length; i++)
+          if (!(b2[i] > b2[i - 1])) { loi("HIST_ORDER", `Mốc lớp phải tăng dần, đang có ${b2[i - 1]} rồi ${b2[i]}.`); break; }
+      }
+      break;
+    }
+
+    case "box_plot": {
+      (v.groups ?? []).forEach((g, i) => {
+        const ten = g.name || `Nhóm ${i + 1}`;
+        if ([g.min, g.q1, g.median, g.q3, g.max].some((x) => !Number.isFinite(x)))
+          loi("BOX_NAN", `Nhóm "${ten}" thiếu một trong năm số min, q1, median, q3, max.`);
+        (g.outliers ?? []).forEach((o) => {
+          if (o >= g.min && o <= g.max)
+            canh("BOX_OUTLIER", `Nhóm "${ten}": giá trị ngoại lệ ${o} lại nằm trong đoạn [${g.min}; ${g.max}] của chính nhóm đó.`,
+                 "Giá trị ngoại lệ phải nằm ngoài hai đầu râu; nằm trong thì nó không phải ngoại lệ.");
+        });
+      });
+      break;
+    }
+
+    case "prob_tree": {
+      (v.branches ?? []).forEach((b2) => {
+        const pb = docXacSuat(b2.p);
+        if (!Number.isFinite(pb))
+          canh("TREE_P", `Nhánh "${b2.label}" có xác suất không đọc được: "${b2.p}".`);
+        else if (pb < 0 || pb > 1)
+          loi("TREE_RANGE", `Nhánh "${b2.label}" có xác suất ${b2.p} — xác suất phải nằm trong [0; 1].`);
+        /* Xác suất cả đường đi = TÍCH hai xác suất trên đường. Sai chỗ này là
+           sai đúng cái mà bài xác suất có điều kiện muốn dạy. */
+        (b2.children ?? []).forEach((c) => {
+          const pc = docXacSuat(c.p), kq = docXacSuat(c.result);
+          if (!Number.isFinite(kq) || !Number.isFinite(pb) || !Number.isFinite(pc)) return;
+          if (pc < 0 || pc > 1)
+            loi("TREE_RANGE", `Nhánh "${b2.label}" → "${c.label}" có xác suất ${c.p} ngoài [0; 1].`);
+          if (!xapXi(kq, pb * pc, 1e-2))
+            loi("TREE_PRODUCT", `Nhánh "${b2.label}" → "${c.label}": ghi kết quả ${c.result} nhưng ${b2.p} × ${c.p} = ${(pb * pc).toFixed(3)}.`);
+        });
+      });
+      break;
+    }
+
+    case "number_line": {
+      if (!(v.max > v.min)) { loi("NL_RANGE", `Trục số có min = ${v.min} không nhỏ hơn max = ${v.max}.`); break; }
+      (v.intervals ?? []).forEach((iv, i) => {
+        const a2 = iv.from === "-inf" ? -Infinity : Number(iv.from);
+        const b2 = iv.to === "+inf" ? Infinity : Number(iv.to);
+        if (!(b2 > a2)) loi("NL_INTERVAL", `Khoảng ${iv.label || i + 1} có đầu trái ${iv.from} không nhỏ hơn đầu phải ${iv.to}.`);
+        [[a2, iv.from], [b2, iv.to]].forEach(([val, raw]) => {
+          if (Number.isFinite(val as number) && ((val as number) < v.min || (val as number) > v.max))
+            canh("NL_OUT", `Khoảng ${iv.label || i + 1} có mút ${raw} nằm ngoài trục [${v.min}; ${v.max}] nên sẽ bị cắt.`,
+                 `Nới trường min / max của trục số cho chứa hết các khoảng.`);
+        });
+      });
+      break;
+    }
+
+    case "inequality_region": {
+      (v.constraints ?? []).forEach((c, i) => {
+        if (Math.abs(c.a) < 1e-12 && Math.abs(c.b) < 1e-12)
+          loi("REG_DEGEN", `Ràng buộc ${c.label || i + 1} có cả a và b bằng 0 — không phải một đường thẳng.`);
+      });
+      (v.vertices ?? []).forEach((q) => {
+        if (q.x < v.xMin || q.x > v.xMax || q.y < v.yMin || q.y > v.yMax)
+          canh("REG_VIEW", `Đỉnh ${q.label || `(${q.x}; ${q.y})`} nằm ngoài khung nhìn nên không hiện trên hình.`);
+      });
+      break;
+    }
+
+    case "solid_3d": {
+      const n = v.baseSides ?? (v.shape === "tetrahedron" ? 3 : 4);
+      const laChop = v.shape === "pyramid" || v.shape === "tetrahedron" || v.shape === "cone";
+      const laLangTru = v.shape === "prism" || v.shape === "cube" || v.shape === "cylinder";
+      const ds = v.labels ?? [];
+      if (ds.length) {
+        const trung = ds.filter((x, i) => ds.indexOf(x) !== i);
+        if (trung.length) loi("SOLID_DUP", `Tên đỉnh bị trùng: ${[...new Set(trung)].join(", ")}.`);
+        if (laChop && ds.length !== n && ds.length !== n + 1)
+          canh("SOLID_LABELS", `Hình chóp ${n} cạnh đáy cần ${n + 1} tên nhưng đang có ${ds.length}.`,
+               "Tên ĐẦU TIÊN là đỉnh chóp, đúng lối gọi S.ABCD — ví dụ S, A, B, C, D.");
+        if (laLangTru && ds.length !== n && ds.length !== 2 * n)
+          canh("SOLID_LABELS", `Lăng trụ ${n} cạnh đáy cần ${2 * n} tên (đáy rồi mặt trên) nhưng đang có ${ds.length}.`);
+      }
+      const coTenDinh = laChop && ds.length > n;
+      const tenCo = new Set<string>(([
+        ...(laChop ? [coTenDinh ? ds[0] : "S"] : []),
+        ...Array.from({ length: n }, (_, i) => (coTenDinh ? ds[i + 1] : ds[i]) ?? "ABCDEFGH"[i]),
+        ...(laLangTru ? Array.from({ length: n }, (_, i) => ds[n + i] ?? `${ds[i] ?? "ABCDEFGH"[i]}'`) : []),
+      ] as (string | undefined)[]).filter((x): x is string => !!x));
+      (v.highlights ?? []).forEach((h) => {
+        [h.from, h.to].forEach((t) => {
+          if (t && !tenCo.has(t))
+            canh("SOLID_EDGE", `Đoạn nhấn mạnh nhắc tới đỉnh "${t}" mà hình không có đỉnh nào tên vậy — đoạn đó sẽ không được vẽ.`,
+                 `Các đỉnh hiện có: ${[...tenCo].join(", ")}.`);
+        });
+      });
+      break;
+    }
+
+    case "oxyz": {
+      const R = v.range ?? 4;
+      (v.points ?? []).forEach((q) => {
+        const xa = Math.max(Math.abs(q.x), Math.abs(q.y), Math.abs(q.z));
+        if (xa > R)
+          canh("OXYZ_RANGE", `Điểm ${q.label || `(${q.x}; ${q.y}; ${q.z})`} có toạ độ vượt range = ${R}.`,
+               `Đặt range ít nhất ${Math.ceil(xa)} để điểm nằm trong hình.`);
+      });
+      (v.planes ?? []).forEach((pl, i) => {
+        if (Math.abs(pl.a) < 1e-12 && Math.abs(pl.b) < 1e-12 && Math.abs(pl.c) < 1e-12)
+          loi("OXYZ_PLANE", `Mặt phẳng ${pl.label || i + 1} có a = b = c = 0 — không phải một mặt phẳng.`);
+      });
+      if (v.sphere && !(v.sphere.r > 0)) loi("OXYZ_SPHERE", "Mặt cầu có bán kính không dương.");
+      (v.vectors ?? []).forEach((vec, i) => {
+        if (Math.abs(vec.x) < 1e-12 && Math.abs(vec.y) < 1e-12 && Math.abs(vec.z) < 1e-12)
+          canh("OXYZ_VEC0", `Vectơ ${vec.label || i + 1} là vectơ không nên không vẽ được.`);
+      });
+      break;
+    }
+
+    case "vector_2d": {
+      if (!(v.xMin < v.xMax) || !(v.yMin < v.yMax)) { loi("VEC_RANGE", "Khung nhìn của hình vectơ không hợp lệ."); break; }
+      (v.vectors ?? []).forEach((vec, i) => {
+        if (Math.abs(vec.x2 - vec.x1) < 1e-12 && Math.abs(vec.y2 - vec.y1) < 1e-12)
+          canh("VEC_ZERO", `Vectơ ${vec.label || i + 1} có điểm đầu trùng điểm cuối.`);
+        ([[vec.x1, vec.y1], [vec.x2, vec.y2]] as [number, number][]).forEach(([x, y]) => {
+          if (x < v.xMin || x > v.xMax || y < v.yMin || y > v.yMax)
+            canh("VEC_VIEW", `Vectơ ${vec.label || i + 1} có đầu (${x}; ${y}) nằm ngoài khung nhìn.`);
+        });
+      });
+      if (v.showParallelogram && (v.vectors?.length ?? 0) >= 2) {
+        const [a2, b2] = v.vectors;
+        if (Math.abs(a2.x1 - b2.x1) > 1e-9 || Math.abs(a2.y1 - b2.y1) > 1e-9)
+          canh("VEC_PARA", "Quy tắc hình bình hành cần hai vectơ CHUNG GỐC; hai vectơ đầu đang khác điểm đầu nên hình bình hành sẽ không được vẽ.");
+      }
+      break;
+    }
+
+    case "venn": {
+      const so = v.sets?.length ?? 0;
+      if (so < 2 || so > 3) loi("VENN_SETS", `Biểu đồ Ven vẽ được 2 hoặc 3 tập hợp, đang khai ${so}.`);
+      const ten = new Set((v.sets ?? []).map((x) => x.name));
+      (v.shade ?? []).forEach((sh) => {
+        const la = String(sh).replace(/[^A-Za-z]/g, "").split("").filter((c) => !ten.has(c));
+        if (la.length) canh("VENN_SHADE", `Vùng tô "${sh}" nhắc tới tập ${[...new Set(la)].join(", ")} không có trong hình.`);
+      });
+      break;
+    }
+
+    case "quiz": {
+      const ds = v.options ?? [];
+      const chuan = ds.map((x) => String(x).replace(/\s/g, ""));
+      const trung = chuan.filter((x, i) => chuan.indexOf(x) !== i);
+      if (trung.length) loi("QUIZ_DUP", "Có hai phương án giống nhau — học sinh không chọn được đáp án nào.");
+      if (!v.question?.trim()) loi("QUIZ_Q", "Câu hỏi trắc nghiệm để trống.");
+      break;
+    }
+
+    case "unit_circle": {
+      (v.angles ?? []).forEach((a2) => {
+        const t = String(a2.value ?? "").replace(/\\pi|π/g, String(Math.PI));
+        if (!compileExpression(t).ok && !Number.isFinite(Number(t)))
+          canh("UC_ANGLE", `Không đọc được góc "${a2.value}".`, 'Viết dạng "\\pi/3", "2\\pi/3" hoặc một số radian.');
+      });
+      if (!(v.angles ?? []).length && !(v.arcs ?? []).length)
+        canh("UC_EMPTY", "Đường tròn lượng giác chưa đánh dấu góc hay cung nào.");
+      break;
+    }
+
+    default: break;
+  }
 }

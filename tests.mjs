@@ -7,6 +7,9 @@ import { auditLesson, repairLesson } from "./_build/lib/audit.js";
 import { buildDeck, outlineDeck } from "./_build/lib/slides.js";
 import { VISUAL_GUIDE, readVisualJson, sampleFor } from "./_build/lib/visualguide.js";
 import { VISUAL_LABEL } from "./_build/lib/themes.js";
+import { soVN, ticksFit, ticksFitDoc } from "./_build/lib/plot.js";
+import { daoHam } from "./_build/lib/deriv.js";
+import { khaoSatHamSo } from "./_build/lib/khaosat.js";
 
 let pass=0, fail=0;
 const eq=(name,a,b,tol=1e-9)=>{const ok=(typeof a==="number"&&typeof b==="number")?Math.abs(a-b)<=tol:JSON.stringify(a)===JSON.stringify(b);ok?pass++:(fail++,console.log("FAIL",name,"got",JSON.stringify(a),"want",JSON.stringify(b)));};
@@ -271,6 +274,154 @@ eq("mẫu nào cũng khai đúng type của nó",
 // viên gặp lại đúng cái ô JSON trắng như trước.
 eq("có hướng dẫn cho đủ 16 loại hình",
    Object.keys(VISUAL_LABEL).filter((t) => !VISUAL_GUIDE[t]), []);
+
+// --- V12.0: bộ kiểm định phải bắt lỗi dữ liệu của CẢ 16 loại hình ---
+// Tới V11.8 chỉ bảng biến thiên và đồ thị được kiểm bằng toán học; mười bốn
+// loại còn lại muốn ghi gì cũng "Đạt". Mỗi phép kiểm dưới đây đi kèm một ca
+// SAI (phải bắt được) và một ca ĐÚNG (không được báo oan).
+const maLoi = (visual) => codesOf(visual);
+const batDuoc = (ten, visual, ma) => eq(ten, maLoi(visual).includes(ma), true);
+const khongBaoOan = (ten, visual, ma) => eq(ten, maLoi(visual).includes(ma), false);
+
+// Hình chóp: tên đỉnh trùng, và đoạn nhấn mạnh trỏ vào đỉnh không có
+batDuoc("chóp: tên đỉnh trùng nhau",
+  { type: "solid_3d", shape: "pyramid", baseSides: 4, labels: ["S", "A", "B", "B", "D"] }, "SOLID_DUP");
+batDuoc("chóp: nhấn mạnh đỉnh không tồn tại",
+  { type: "solid_3d", shape: "pyramid", baseSides: 4, labels: ["S", "A", "B", "C", "D"],
+    highlights: [{ from: "S", to: "M", label: "SM" }] }, "SOLID_EDGE");
+khongBaoOan("chóp S.ABCD đúng thì không báo",
+  { type: "solid_3d", shape: "pyramid", baseSides: 4, labels: ["S", "A", "B", "C", "D"],
+    highlights: [{ from: "S", to: "A", label: "SA ⊥ (ABCD)" }] }, "SOLID_EDGE");
+
+// Biểu đồ hộp: giá trị ngoại lệ lại nằm trong hai đầu râu
+batDuoc("hộp: ngoại lệ nằm trong râu",
+  { type: "box_plot", groups: [{ name: "12A", min: 3, q1: 5, median: 6, q3: 7, max: 9, outliers: [6] }] }, "BOX_OUTLIER");
+khongBaoOan("hộp: ngoại lệ nằm ngoài râu là đúng",
+  { type: "box_plot", groups: [{ name: "12A", min: 3, q1: 5, median: 6, q3: 7, max: 9, outliers: [1] }] }, "BOX_OUTLIER");
+
+// Sơ đồ cây: xác suất đường đi phải bằng TÍCH hai xác suất
+batDuoc("cây: kết quả không bằng tích",
+  { type: "prob_tree", root: "Hộp",
+    branches: [{ label: "Đỏ", p: "0,6", children: [{ label: "Đỏ", p: "0,5", result: "0,50" }, { label: "Xanh", p: "0,5", result: "0,30" }] },
+               { label: "Xanh", p: "0,4", children: [{ label: "Đỏ", p: "0,5", result: "0,20" }, { label: "Xanh", p: "0,5", result: "0,20" }] }] },
+  "TREE_PRODUCT");
+batDuoc("cây: xác suất ngoài [0; 1]",
+  { type: "prob_tree", branches: [{ label: "A", p: "1,4" }, { label: "B", p: "-0,4" }] }, "TREE_RANGE");
+khongBaoOan("cây đúng thì không báo tích sai",
+  { type: "prob_tree", root: "Hộp",
+    branches: [{ label: "Đỏ", p: "0,6", children: [{ label: "Đỏ", p: "0,5", result: "0,30" }, { label: "Xanh", p: "0,5", result: "0,30" }] },
+               { label: "Xanh", p: "0,4", children: [{ label: "Đỏ", p: "0,25", result: "0,10" }, { label: "Xanh", p: "0,75", result: "0,30" }] }] },
+  "TREE_PRODUCT");
+
+// Miền nghiệm: đỉnh bịa ra — nay là LỖI chặn xuất, không còn là cảnh báo
+const mienSaiDinh = {
+  type: "inequality_region",
+  constraints: [{ a: 1, b: 1, c: 6, op: "<=", label: "x + y ≤ 6" }],
+  xMin: -1, xMax: 9, yMin: -1, yMax: 9,
+  vertices: [{ x: 8, y: 8, label: "M" }],
+};
+batDuoc("miền nghiệm: đỉnh không thoả ràng buộc", mienSaiDinh, "REGION_VERTEX");
+eq("đỉnh bịa là LỖI chặn xuất, không phải cảnh báo",
+   auditLesson({ title: "T", sections: [{ heading: "H", content: "Nội dung slide đủ dài cho bộ kiểm định.", visuals: [mienSaiDinh] }] })
+     .find((i) => i.code === "REGION_VERTEX").level, "error");
+
+// Trục số: khoảng ngược đầu, và mút nằm ngoài trục
+batDuoc("trục số: khoảng ngược đầu",
+  { type: "number_line", min: -5, max: 5, intervals: [{ from: 3, to: 1, label: "sai" }] }, "NL_INTERVAL");
+batDuoc("trục số: mút ra ngoài trục",
+  { type: "number_line", min: -5, max: 5, intervals: [{ from: -3, to: 9, label: "[-3; 9]" }] }, "NL_OUT");
+
+// Bảng xét dấu: ghi số 0 ở mốc không phải nghiệm của dòng đó
+batDuoc("xét dấu: số 0 ở mốc không phải nghiệm của dòng",
+  { type: "sign_chart", x: ["-\\infty", "-2", "1", "+\\infty"],
+    rows: [{ label: "x - 1", signs: ["-", "0", "-", "0", "+"] }] }, "SC_ZERO");
+khongBaoOan("xét dấu dùng dấu | ở mốc lạ thì đúng",
+  { type: "sign_chart", x: ["-\\infty", "-2", "1", "+\\infty"],
+    rows: [{ label: "x - 1", signs: ["-", "|", "-", "0", "+"] }] }, "SC_ZERO");
+
+// Trắc nghiệm: hai phương án trùng nhau
+batDuoc("trắc nghiệm: hai phương án giống nhau",
+  { type: "quiz", question: "Chọn đáp án", options: ["$y = 1$", "$y=1$", "$y = 2$", "$y = 3$"], answerIndex: 0 }, "QUIZ_DUP");
+
+// Vectơ: quy tắc hình bình hành mà hai vectơ không chung gốc
+batDuoc("vectơ: hình bình hành cần chung gốc",
+  { type: "vector_2d", xMin: -3, xMax: 4, yMin: -3, yMax: 4, showParallelogram: true,
+    vectors: [{ x1: 0, y1: 0, x2: 2, y2: 1 }, { x1: 1, y1: 1, x2: 3, y2: 2 }] }, "VEC_PARA");
+
+// Ven: vùng tô nhắc tập không có
+batDuoc("Ven: vùng tô nhắc tập không tồn tại",
+  { type: "venn", sets: [{ name: "A" }, { name: "B" }], shade: ["AC"] }, "VENN_SHADE");
+
+// Oxyz: mặt phẳng suy biến, mặt cầu bán kính không dương
+batDuoc("Oxyz: mặt phẳng a = b = c = 0",
+  { type: "oxyz", planes: [{ a: 0, b: 0, c: 0, d: 5, label: "P" }] }, "OXYZ_PLANE");
+batDuoc("Oxyz: mặt cầu bán kính không dương",
+  { type: "oxyz", sphere: { x: 0, y: 0, z: 0, r: 0 } }, "OXYZ_SPHERE");
+
+// Tần số ghép nhóm: mốc lớp không tăng dần
+batDuoc("histogram: mốc lớp không tăng dần",
+  { type: "stat_chart", chart: "histogram", labels: ["a", "b"], bins: [150, 160, 155], series: [{ values: [3, 4] }] }, "HIST_ORDER");
+
+// Hình quạt: số âm
+batDuoc("hình quạt: số liệu âm",
+  { type: "stat_chart", chart: "pie", labels: ["A", "B"], series: [{ values: [-2, 5] }] }, "PIE_NEG");
+
+// Vạch chia phải vừa chỗ: miền [-3; 5] không được ra 17 nhãn chen nhau
+eq("bước chia tự nới cho vừa chỗ", ticksFit(-3, 5, 300, 34).length <= 9, true);
+eq("vạch chia vẫn là số đẹp", ticksFit(-3, 5, 300, 34).every((t) => Math.abs(t * 2 - Math.round(t * 2)) < 1e-9), true);
+eq("trục đứng tính theo chiều cao dòng chữ", ticksFitDoc(-1, 8, 340, 34).length >= 4, true);
+// Số viết theo cách Việt Nam
+eq("số thập phân dùng dấu phẩy", [soVN(5.5), soVN(-0.25), soVN(7)], ["5,5", "-0,25", "7"]);
+
+// --- V12.0: đạo hàm KÝ HIỆU phải ra đúng dạng SGK, không chỉ đúng về toán ---
+// Đúng mà viết ((2x+2)(x-1) - (x²+2x-2))/(x-1)² thì giáo viên không dùng được.
+const dh = (f) => daoHam(f).expr;
+eq("đạo hàm đa thức", dh("x^3-3*x+2"), "3*x^2-3");
+eq("đạo hàm khai triển gọn như SGK", dh("(x^2+2*x-2)/(x-1)"), "(x^2-2*x)/(x-1)^2");
+eq("hàm nhất biến ra hằng trên bình phương", dh("(x+1)/(x-1)"), "(-2)/(x-1)^2");
+eq("bậc hai trên bậc nhất", dh("(x^2-x+1)/(x+1)"), "(x^2+2*x-2)/(x+1)^2");
+eq("ước lược hệ số ở căn", dh("sqrt(x^2+1)"), "x/sqrt(x^2+1)");
+eq("rút gọn x·(1/x) thành 1", dh("x*ln(x)"), "ln(x)+1");
+eq("gộp hệ số 2·(2x) thành 4x", dh("x^4-2*x^2"), "4*x^3-4*x");
+eq("hàm hợp lượng giác", dh("sin(2*x)"), "2*cos(2*x)");
+eq("hàm mũ cơ số a", dh("2^x"), "2^x*ln(2)");
+eq("không đoán bừa khi không lấy được đạo hàm", daoHam("|x|").ok, false);
+eq("số âm ở tử không bọc ngoặc vô ích", daoHam("(x+1)/(x-1)").latex.includes("\\left(-2\\right)"), false);
+// Đối chiếu đạo hàm ký hiệu với đạo hàm SỐ HỌC: hai đường độc lập, khớp nhau
+// thì gần như chắc chắn cả hai đúng.
+["x^3-3*x+2", "(x^2+2*x-2)/(x-1)", "sqrt(x^2+1)", "sin(2*x)", "x*ln(x)"].forEach((f) => {
+  const e = daoHam(f).expr;
+  const lech = [0.37, 1.63, 2.9, 4.1].filter((x) => {
+    const a = compileExpression(e).eval(x), b = numericDerivative(f, x);
+    return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) > 1e-4 * Math.max(1, Math.abs(b));
+  });
+  eq(`đạo hàm ký hiệu khớp đạo hàm số học: ${f}`, lech, []);
+});
+
+// --- V12.0: nút "Khảo sát hàm số" dựng đủ bộ slide, không gọi AI ---
+const ks = khaoSatHamSo("(x^2+2*x-2)/(x-1)");
+eq("khảo sát được hàm phân thức", ks.ok, true);
+eq("dựng đủ ba slide", ks.sections.length, 3);
+eq("slide 2 có bảng biến thiên", ks.sections[1].visuals[0].type, "variation_table");
+eq("slide 3 có đồ thị", ks.sections[2].visuals[0].type, "graph");
+eq("nêu đúng tập xác định", ks.sections[0].content.includes("\\setminus \\{1\\}"), true);
+eq("viết đạo hàm thành công thức", ks.sections[0].content.includes("x^{2} - 2x"), true);
+eq("tìm đúng cực đại và cực tiểu",
+   [ks.sections[0].content.includes("y_{CĐ} = 2"), ks.sections[0].content.includes("y_{CT} = 6")], [true, true]);
+eq("nhận ra tiệm cận đứng và tiệm cận xiên",
+   [ks.sections[2].content.includes("x = 1"), ks.sections[2].content.includes("y = x + 3")], [true, true]);
+const gKS = ks.sections[2].visuals[0];
+eq("khung nhìn bám theo cực trị, không kéo tới vô cực", gKS.yMax <= 14 && gKS.yMin >= -8, true);
+eq("đồ thị có đủ hai điểm cực trị", gKS.points.length, 2);
+// Bộ slide do khảo sát dựng ra phải TỰ NÓ vượt được bộ kiểm định.
+eq("bộ slide khảo sát không có lỗi chặn xuất",
+   auditLesson({ title: "Khảo sát", sections: ks.sections }).filter((i) => i.level === "error"), []);
+eq("hàm nhất biến: nói rõ không có cực trị",
+   khaoSatHamSo("(x+1)/(x-1)").sections[0].content.includes("không có cực trị"), true);
+eq("hàm nhất biến: tiệm cận ngang y = 1",
+   khaoSatHamSo("(x+1)/(x-1)").sections[2].content.includes("y = 1"), true);
+eq("biểu thức hỏng thì báo lỗi, không dựng slide bừa", khaoSatHamSo("alert(1)").ok, false);
+eq("ô trống thì nhắc nhập hàm số", khaoSatHamSo("  ").error.includes("Chưa nhập"), true);
 
 console.log(`\n${pass} kiểm thử đạt, ${fail} lỗi`);
 process.exit(fail?1:0);

@@ -24,6 +24,7 @@ import { THEMES, PHASE_META, getTheme } from "@/lib/themes";
 import { SlideFrame, Presenter } from "@/components/SlideView";
 import { buildDeck, findSlideForSection, outlineDeck } from "@/lib/slides";
 import { COMMON_RULES, VISUAL_GUIDE, readVisualJson, sampleFor } from "@/lib/visualguide";
+import { khaoSatHamSo } from "@/lib/khaosat";
 import {
   duplicateEntry, listLibrary, migrateLegacyDraft, newId, QUOTA_HINT, readActiveId,
   readEntry, readForm, removeEntry, saveEntry, writeActiveId, writeForm, type LibraryMeta,
@@ -50,6 +51,7 @@ const DETAIL_TITLE: Record<string, string> = {
   slide: "Từng slide trong bản xuất",
   visuals: "Các hình Toán trong bài",
   notes: "Các mục có ghi chú cho giáo viên",
+  khaosat: "Khảo sát một hàm số và thêm vào bài này",
 };
 
 /** "19/04 lúc 15:32" — đủ để phân biệt các lần sửa trong cùng một tuần. */
@@ -163,8 +165,10 @@ export default function Page() {
   const [slideIdx, setSlideIdx] = useState(-1);
   /** "slide" = liệt kê từng slide của bản xuất; "muc" = liệt kê theo mục như V11.8. */
   const [listMode, setListMode] = useState<"slide" | "muc">("slide");
+  /** Ô nhập hàm số của nút "Khảo sát hàm số". */
+  const [hamSo, setHamSo] = useState("");
   /** Ô thống kê đang mở bảng chi tiết. */
-  const [detail, setDetail] = useState<null | "errors" | "warnings" | "tips" | "muc" | "slide" | "visuals" | "notes">(null);
+  const [detail, setDetail] = useState<null | "errors" | "warnings" | "tips" | "muc" | "slide" | "visuals" | "notes" | "khaosat">(null);
 
   /* ---------- Thư viện bài giảng ---------- */
   /** Chỉ mục các bài đã lưu trong trình duyệt này. */
@@ -613,6 +617,42 @@ export default function Page() {
     );
   }
 
+  /**
+   * NÚT "KHẢO SÁT HÀM SỐ" (V12.0).
+   *
+   * Nhập một dòng hàm số, phần mềm dựng cả bộ slide: tập xác định, đạo hàm viết
+   * thành công thức, nghiệm y′ = 0, bảng biến thiên, tiệm cận, đồ thị có điểm
+   * cực trị. KHÔNG gọi AI — mọi con số đều tính trực tiếp từ biểu thức, nên
+   * không có bước nào cần soi lại.
+   */
+  function khaoSat() {
+    const kq = khaoSatHamSo(hamSo);
+    if (!kq.ok) { setMessage(kq.error || "Không khảo sát được hàm số này."); return; }
+
+    const bai: Lesson = lesson
+      ? { ...structuredClone(lesson), sections: [...structuredClone(lesson.sections), ...kq.sections] }
+      : {
+          title: `Khảo sát hàm số y = ${hamSo.trim()}`,
+          subject: "Toán", grade: form.grade.replace(/\D+/g, "") || "12", book: form.book,
+          objectives: [
+            "Lập được bảng biến thiên của hàm số đã cho.",
+            "Xác định được các đường tiệm cận và vẽ được đồ thị.",
+          ],
+          keywords: ["khảo sát hàm số", "bảng biến thiên", "tiệm cận", "đồ thị"],
+          sections: kq.sections,
+        };
+    if (!lesson) setActiveId(null);
+    applyLesson(bai);
+    setSelected(bai.sections.length - kq.sections.length);
+    setSlideIdx(-1);
+    setHamSo("");
+    setMessage([
+      `Đã dựng ${kq.sections.length} slide khảo sát hàm số.`,
+      kq.notes.length ? kq.notes.join("; ") + "." : "",
+      kq.chuaChac.length ? `Cần thầy xem lại: ${kq.chuaChac.join(" ")}` : "",
+    ].filter(Boolean).join(" "));
+  }
+
   /* ---------- Giao diện ---------- */
 
   return (
@@ -761,7 +801,23 @@ export default function Page() {
               <small>Tệp do LessonStudio xuất ra</small>
             </label>
 
-            <h2>3. Yêu cầu riêng</h2>
+            <h2>3. Hoặc: khảo sát một hàm số ngay, không cần AI</h2>
+            <div className="khaosat-box">
+              <label>
+                Hàm số y =
+                <input value={hamSo} onChange={(e) => setHamSo(e.target.value)}
+                       placeholder="(x^2+2*x-2)/(x-1)"
+                       onKeyDown={(e) => { if (e.key === "Enter") khaoSat(); }} />
+              </label>
+              <button className="khaosat" onClick={khaoSat} disabled={!hamSo.trim()}>∫ KHẢO SÁT HÀM SỐ</button>
+              <p>
+                Phần mềm tự tính tập xác định, đạo hàm, nghiệm $y&apos; = 0$, bảng biến thiên, tiệm cận
+                và vẽ đồ thị — <b>không qua AI</b>, nên không có bước nào phải soi lại.
+                Viết như máy tính: <code>x^3-3*x+2</code>, <code>(x+1)/(x-1)</code>, <code>sqrt(x+1)</code>.
+              </p>
+            </div>
+
+            <h2>4. Yêu cầu riêng</h2>
             <textarea value={form.notes} onChange={set("notes")} placeholder="VD: nhấn mạnh bài toán thực tế về lãi kép; dành 2 slide cho sai lầm thường gặp khi xét dấu..." />
             <div className="start-actions">
               <button className="create" onClick={generate} disabled={busy}>
@@ -789,6 +845,9 @@ export default function Page() {
                   ▤ Thư viện ({library.length})
                 </button>
                 <button className="newlesson" onClick={startNewLesson}>✚ Bài mới</button>
+                <button className="khaosat-btn" onClick={() => setDetail(detail === "khaosat" ? null : "khaosat")}>
+                  ∫ Khảo sát hàm số
+                </button>
                 <button className="present" onClick={() => setPresenting(deckIndex)}>⛶ Trình chiếu</button>
                 {/* V11.9: bỏ nút "Xem thử 10 slide". Khung xem trước bên dưới đã là
                     hình ảnh thật của từng slide, và nay danh sách bên trái mở được
@@ -860,6 +919,23 @@ export default function Page() {
                   <b>{DETAIL_TITLE[detail]}</b>
                   <button className="ghost" onClick={() => setDetail(null)}>Đóng</button>
                 </div>
+
+                {detail === "khaosat" && (
+                  <div className="khaosat-box">
+                    <label>
+                      Hàm số y =
+                      <input value={hamSo} onChange={(e) => setHamSo(e.target.value)}
+                             placeholder="(x^2+2*x-2)/(x-1)"
+                             onKeyDown={(e) => { if (e.key === "Enter") khaoSat(); }} />
+                    </label>
+                    <button className="khaosat" onClick={khaoSat} disabled={!hamSo.trim()}>∫ KHẢO SÁT VÀ THÊM SLIDE</button>
+                    <p>
+                      Thêm 3 slide vào cuối bài: tập xác định + đạo hàm + nghiệm $y&apos; = 0$, bảng biến thiên,
+                      tiệm cận + đồ thị. Mọi con số tính trực tiếp từ biểu thức, <b>không qua AI</b>.
+                      Viết như máy tính: <code>x^3-3*x+2</code>, <code>(x+1)/(x-1)</code>, <code>sqrt(x+1)</code>.
+                    </p>
+                  </div>
+                )}
 
                 {(detail === "errors" || detail === "warnings" || detail === "tips") && (() => {
                   const list = detail === "errors" ? errors : detail === "warnings" ? warnings : tips;

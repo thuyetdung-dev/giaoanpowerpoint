@@ -49,7 +49,9 @@ export function hasTableCaption(v: VariationVisual): boolean {
 /** Biểu thức đầy đủ để ghi thành dòng nhãn phía trên bảng (rỗng nếu không có). */
 export function tableCaption(v: VariationVisual): string {
   const name = shortLabel(v.label, "y");
-  const expr = plainMath(v.expression ?? "").trim();
+  // Bỏ dấu * : biểu thức được nhập theo lối máy tính ("(x^2+2*x-2)/(x-1)"), nhưng
+  // trên slide thì Toán không viết dấu nhân giữa hệ số và biến.
+  const expr = plainMath(String(v.expression ?? "").replace(/\*/g, "")).trim();
   if (expr) return `${name} = ${expr}`;
   // label dài chính là biểu thức mà bộ sinh nội dung đặt nhầm chỗ.
   const raw = plainMath(v.label ?? "").trim();
