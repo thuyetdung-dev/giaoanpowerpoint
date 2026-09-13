@@ -47,7 +47,7 @@ function useFitScale() {
 /* Các mảnh của slide                                                  */
 /* ------------------------------------------------------------------ */
 
-function Chrome({ t, title, phase, number }: { t: Theme; title: string; phase?: string; number: number }) {
+function Chrome({ t, title, phase, number, titlePt }: { t: Theme; title: string; phase?: string; number: number; titlePt?: number }) {
   const meta = phase ? PHASE_META[phase] : undefined;
   return (
     <>
@@ -65,7 +65,7 @@ function Chrome({ t, title, phase, number }: { t: Theme; title: string; phase?: 
         style={{
           left: px(LAYOUT.title.x), top: px(LAYOUT.title.y), height: px(LAYOUT.title.h),
           width: px(LAYOUT.title.wWide),
-          fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif`, fontSize: pt(LAYOUT.title.pt), color: `#${t.ink}`,
+          fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif`, fontSize: pt(Math.max(20, Math.min(44, titlePt ?? LAYOUT.title.pt))), color: `#${t.ink}`,
         }}
       >
         <MixedMath value={title} />
@@ -223,7 +223,7 @@ export function SlideBoard({
 
   return (
     <div className="sl-body" style={{ background: `#${t.bg}` }}>
-      <Chrome t={t} title={heading} phase={section.phase} number={number} />
+      <Chrome t={t} title={heading} phase={section.phase} number={number} titlePt={section.fontSize?.title} />
       <Footer t={t} lesson={lesson} sectionNo={spec.sectionIndex} />
 
       {/* Khối chữ: trải hết bề ngang. Không có hình thì chiếm trọn vùng nội

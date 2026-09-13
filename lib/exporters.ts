@@ -277,11 +277,12 @@ type Meta = { teacher?: string; school?: string; limitSlides?: number; includeNo
  * Tiêu đề slide cũng có thể chứa công thức ("Ví dụ 3: Khảo sát hàm số
  * $y=\\frac{x+1}{x-1}$"). Khi đó dựng KaTeX thành ảnh y như khối chữ.
  */
-async function addTitle(slide: any, t: Theme, raw: string, hasBadge: boolean, stage: HTMLElement) {
+async function addTitle(slide: any, t: Theme, raw: string, hasBadge: boolean, stage: HTMLElement, titlePt?: number) {
   const L = LAYOUT.title;
+  const size = Math.max(20, Math.min(44, titlePt ?? L.pt));
   const box = { x: L.x, y: L.y, w: hasBadge ? L.wNarrow : L.wWide, h: L.h };
   if (needsRichMath(raw)) {
-    const png = await richTextPng(stage, [raw], box.w, L.pt, t, true, t.bg).catch(() => null);
+    const png = await richTextPng(stage, [raw], box.w, size, t, true, t.bg).catch(() => null);
     if (png) {
       const ratio = png.w / png.h;
       let w = box.w;
@@ -293,7 +294,7 @@ async function addTitle(slide: any, t: Theme, raw: string, hasBadge: boolean, st
   }
   slide.addText(mixedLatexToUnicode(raw).text, {
     x: box.x, y: box.y, w: box.w, h: box.h,
-    fontFace: t.headFont, fontSize: L.pt, bold: true, color: t.ink, margin: 0, valign: "mid", fit: "shrink",
+    fontFace: t.headFont, fontSize: size, bold: true, color: t.ink, margin: 0, valign: "mid", fit: "shrink",
   });
 }
 
@@ -505,7 +506,7 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
     const slide = pptx.addSlide();
     const heading = section.heading + (spec.part ? " (tiếp)" : "");
     addChrome(slide, t, slideNo++, section.phase);
-    await addTitle(slide, t, heading, false, stage);
+    await addTitle(slide, t, heading, false, stage, section.fontSize?.title);
     addFooter(slide, t, lesson, spec.sectionIndex);
 
     const bullets = spec.bullets.map(toSlideText);
