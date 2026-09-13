@@ -31,7 +31,8 @@ import type {
   FormulaVisual,
 } from "@/lib/types";
 import { ExtraVisual, isExtraVisual } from "./MathVisualsExtra";
-import { computeLevels, isMinusInf, isPlusInf, plainMath, shortLabel, tableCaption, tenDaoHam } from "@/lib/bbt";
+import { computeLevels, isMinusInf, isPlusInf, plainMath, shortLabel, tableCaption, tableCaptionLatex, tenDaoHam } from "@/lib/bbt";
+import { needsRichMath } from "@/lib/latex";
 import { laThuHepMien, solveVariationTable, tableMatches } from "@/lib/bbtsolve";
 import { GRAPH_H, GRAPH_W, SC_HEAD, SC_ROW_H, SC_W, VT_CAPTION_H, VT_H, VT_W, svgFontPx } from "@/lib/slides";
 
@@ -51,6 +52,23 @@ function Formula({ v }: { v: FormulaVisual }) {
       <MathText value={v.latex} display={v.display ?? true} />
       {v.caption ? <small className="visual-caption"><MixedMath value={v.caption} /></small> : null}
     </div>
+  );
+}
+
+/** Dựng công thức KaTeX hai tầng ngay bên trong hình SVG. */
+function MathSvg({ value, x, y, width, height, fontSize, align = "center" }: {
+  value: string; x: number; y: number; width: number; height: number;
+  fontSize: number; align?: "left" | "center" | "right";
+}) {
+  const justify = align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
+  return (
+    <foreignObject x={x} y={y} width={width} height={height}>
+      <div xmlns="http://www.w3.org/1999/xhtml" className="svg-math"
+           style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: justify,
+                    fontSize, color: "#182735", overflow: "visible" }}>
+        <MathText value={value} />
+      </div>
+    </foreignObject>
   );
 }
 
@@ -100,6 +118,7 @@ function VariationTable({ v }: { v: VariationVisual }) {
    * nó tràn qua vạch dọc và đè lên cột giá trị (xem bài giảng Bài 4, slide 07).
    */
   const caption = tableCaption(vv);
+  const captionLatex = tableCaptionLatex(vv);
   const capH = caption ? VT_CAPTION_H : 0;
   const H = VT_H + capH;
   const fs = svgFontPx(W, H);
@@ -160,6 +179,7 @@ function VariationTable({ v }: { v: VariationVisual }) {
   };
 
   return (
+    <div className="variation-render" data-export-html={needsRichMath(captionLatex) ? "true" : undefined}>
     <svg className="variation-svg" viewBox={`0 0 ${W} ${H}`} role="img"
          aria-label={`Bảng biến thiên${v.label ? " của " + v.label : ""}`}>
       <defs>
@@ -169,8 +189,9 @@ function VariationTable({ v }: { v: VariationVisual }) {
       </defs>
 
       <rect width={W} height={H} fill="#fff" />
-      {caption && (
-        <text x="2" y={fs} className="bbt-caption" style={{ fontSize: fs }}>{caption}</text>
+      {caption && (needsRichMath(captionLatex)
+        ? <MathSvg value={captionLatex} x={2} y={0} width={W - 4} height={capH} fontSize={fs + 2} align="left" />
+        : <text x="2" y={fs} className="bbt-caption" style={{ fontSize: fs }}>{caption}</text>
       )}
       <rect x="1" y={capH + 1} width={W - 2} height={H - capH - 2} fill="#fff" stroke="#263746" strokeWidth="1.6" />
       <line x1={L} x2={L} y1={capH + 1} y2={H - 1} stroke="#263746" strokeWidth="1.6" />
@@ -255,6 +276,7 @@ function VariationTable({ v }: { v: VariationVisual }) {
         );
       })}
     </svg>
+    </div>
   );
 }
 

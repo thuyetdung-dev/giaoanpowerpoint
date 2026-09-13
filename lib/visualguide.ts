@@ -59,7 +59,7 @@ export const VISUAL_GUIDE: Record<string, VisualGuide> = {
   variation_table: {
     intro: "Bảng biến thiên ba hàng x, y′, y — có mũi tên và cả tiệm cận đứng.",
     fields: [
-      { name: "expression", required: false, desc: "Biểu thức hàm số. NÊN ĐIỀN: có trường này thì phần mềm tự tính lại cả bảng cho đúng." },
+      { name: "expression", required: false, desc: "Biểu thức hàm số. Có thể viết dạng máy tính (x)/(2*x+10) hoặc LaTeX \\frac{x}{2x+10}; phần mềm vừa kiểm định vừa hiển thị phân số hai tầng." },
       { name: "x", required: true, desc: "Các mốc trên hàng x, từ trái sang phải, kể cả -\\infty và +\\infty." },
       { name: "derivative", required: true, desc: "Hàng y′, xen kẽ dấu và nghiệm. Có n mốc x thì hàng này có 2n−3 ô. Dùng \"||\" tại điểm không xác định." },
       { name: "values", required: true, desc: "Hàng y, đúng một giá trị cho mỗi mốc x. Để chuỗi rỗng tại mốc gián đoạn." },
