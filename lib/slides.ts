@@ -461,10 +461,14 @@ export function planSection(section: Section, sectionIndex: number): SlideSpec[]
   const visuals = (section.visuals || []).map((visual, index) => ({ visual, index }));
 
   const textBox = LAYOUT.textOnly.bullets;
+  const customBodyPt = section.fontSize?.body;
+  const bodyPt = (automatic: number) => customBodyPt
+    ? Math.max(20, Math.min(48, customBodyPt))
+    : automatic;
 
   // --- Trường hợp không có hình -------------------------------------
   if (!visuals.length) {
-    const pt = fitBodyPt(bullets, textBox.w, textBox.h);
+    const pt = bodyPt(fitBodyPt(bullets, textBox.w, textBox.h));
     const pages = paginate(bullets, textBox.w, textBox.h, pt);
     return pages.map((page, i) => ({
       kind: "content" as const,
@@ -500,7 +504,7 @@ export function planSection(section: Section, sectionIndex: number): SlideSpec[]
   });
 
   if (bullets.length && room >= MIN_BAND_H) {
-    const pt = fitBodyPt(bullets, bandW, bandTextH);
+    const pt = bodyPt(fitBodyPt(bullets, bandW, bandTextH));
 
     // (a) Cả mục vừa gọn trong dải chữ: một slide duy nhất, chữ trên hình dưới.
     const whole = blockHeight(bullets, bandW, pt) + PAD * 1.4;
@@ -521,10 +525,10 @@ export function planSection(section: Section, sectionIndex: number): SlideSpec[]
      * TRANG CUỐI xuống ở chung với hình. Nhờ vậy hình vẫn có chữ dẫn ngay bên
      * trên, và không sinh ra một slide trống trơn chỉ để đặt mỗi cái hình.
      */
-    const ptFull = fitBodyPt(bullets, textBox.w, textBox.h);
+    const ptFull = bodyPt(fitBodyPt(bullets, textBox.w, textBox.h));
     const pages = paginate(bullets, textBox.w, textBox.h, ptFull);
     const tail = pages[pages.length - 1];
-    const tailPt = fitBodyPt(tail, bandW, bandTextH);
+    const tailPt = bodyPt(fitBodyPt(tail, bandW, bandTextH));
     const tailH = blockHeight(tail, bandW, tailPt) + PAD * 1.4;
     if (tailH <= room) {
       const out: SlideSpec[] = [];
@@ -550,7 +554,7 @@ export function planSection(section: Section, sectionIndex: number): SlideSpec[]
   const out: SlideSpec[] = [];
   let part = 0;
   if (bullets.length) {
-    const pt = fitBodyPt(bullets, textBox.w, textBox.h);
+    const pt = bodyPt(fitBodyPt(bullets, textBox.w, textBox.h));
     paginate(bullets, textBox.w, textBox.h, pt).forEach((page, i) => {
       out.push({
         kind: "content", section, sectionIndex, part: part++,
