@@ -439,7 +439,7 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
         charSpacing: 2.4, color: t.accent, margin: 0,
       });
       cover.addText(toSlideText(lesson.title), {
-        x: 1.25, y: 1.55, w: 10.8, h: 1.9, fontFace: t.headFont, fontSize: TYPO.coverTitle, bold: true,
+        x: 1.25, y: 1.55, w: 10.8, h: 1.9, fontFace: t.headFont, fontSize: lesson.autoFontSize?.coverTitle ?? TYPO.coverTitle, bold: true,
         color: t.coverInk, margin: 0, valign: "mid", fit: "shrink",
       });
       cover.addShape("line", { x: 1.25, y: 3.7, w: 2.2, h: 0, line: { color: t.accent, width: 4 } });
@@ -463,7 +463,7 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
     if (spec.kind === "objectives") {
       const s = pptx.addSlide();
       addChrome(s, t, 0);
-      await addTitle(s, t, `Yêu cầu cần đạt${spec.part ? " (tiếp)" : ""}`, false, stage);
+      await addTitle(s, t, `Yêu cầu cần đạt${spec.part ? " (tiếp)" : ""}`, false, stage, lesson.autoFontSize?.objectivesTitle);
       addFooter(s, t, lesson);
       await addTextBlock(s, t, spec.items, objectivesBox(), spec.bodyPt, spec.richMath, stage, t.bg);
       made++;
@@ -477,7 +477,7 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
       d.background = { color: t.coverBg };
       d.addShape("rect", { x: 0, y: 3.0, w: SLIDE_W_IN, h: 0.1, fill: { color: m?.color || t.accent }, line: { transparency: 100 } });
       d.addText((m?.label || "Hoạt động").toUpperCase(), {
-        x: 0, y: 3.25, w: SLIDE_W_IN, h: 1.0, fontFace: t.headFont, fontSize: TYPO.divider, bold: true,
+        x: 0, y: 3.25, w: SLIDE_W_IN, h: 1.0, fontFace: t.headFont, fontSize: lesson.autoFontSize?.divider ?? TYPO.divider, bold: true,
         color: t.coverInk, align: "center", margin: 0, charSpacing: 3,
       });
       made++;
@@ -490,12 +490,12 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
       const end = pptx.addSlide();
       end.background = { color: t.coverBg };
       end.addText("CẢM ƠN CÁC EM ĐÃ THAM GIA TIẾT HỌC", {
-        x: 0.8, y: 2.9, w: 11.7, h: 1.4, fontFace: t.headFont, fontSize: TYPO.endTitle, bold: true,
+        x: 0.8, y: 2.9, w: 11.7, h: 1.4, fontFace: t.headFont, fontSize: lesson.autoFontSize?.endTitle ?? TYPO.endTitle, bold: true,
         color: t.coverInk, align: "center", margin: 0,
       });
       if (lesson.keywords?.length)
         end.addText("Từ khoá: " + lesson.keywords.join(" · "), {
-          x: 0.8, y: 4.45, w: 11.7, h: 0.6, fontFace: t.bodyFont, fontSize: TYPO.endKeywords, color: t.accent, align: "center", margin: 0,
+          x: 0.8, y: 4.45, w: 11.7, h: 0.6, fontFace: t.bodyFont, fontSize: lesson.autoFontSize?.endKeywords ?? TYPO.endKeywords, color: t.accent, align: "center", margin: 0,
         });
       made++;
       continue;
