@@ -1,5 +1,5 @@
 import { compileExpression, detectHorizontalAsymptote, detectPoles, numericDerivative } from "./_build/lib/mathexpr.js";
-import { latexToUnicode, mixedLatexToUnicode } from "./_build/lib/latex.js";
+import { latexToUnicode, mixedLatexToUnicode, splitMathSegments } from "./_build/lib/latex.js";
 import { computeLevels, tenDaoHam } from "./_build/lib/bbt.js";
 import * as Lib from "./_build/lib/library.js";
 import { laThuHepMien, solveVariationTable, vietSo } from "./_build/lib/bbtsolve.js";
@@ -53,6 +53,11 @@ eq("phân số đẹp", latexToUnicode("\\frac{1}{2}").text, "½");
 eq("mũ unicode", latexToUnicode("x^{2}+y^{3}").text, "x²+y³");
 eq("báo lệnh lạ thay vì xoá", latexToUnicode("\\binom{n}{k}").unknownCommands, ["\\binom"]);
 eq("văn bản trộn công thức", mixedLatexToUnicode("Xét $\\sqrt{x}\\geq 0$ với mọi x.").text, "Xét √x≥0 với mọi x.");
+eq("không tách y= khỏi phân số", splitMathSegments("Hàm số $y =$ $\\frac{ax+b}{cx+d}$.") , [
+  { math:false, value:"Hàm số " },
+  { math:true, value:"y = \\frac{ax+b}{cx+d}" },
+  { math:false, value:"." },
+]);
 
 // --- BBT: chiều mũi tên phải theo dấu y', không theo độ lớn giá trị
 const bbt = { type:"variation_table", x:["-\\infty","-1","1","+\\infty"], derivative:["+","0","-","0","+"], values:["-\\infty","4","0","+\\infty"] };
