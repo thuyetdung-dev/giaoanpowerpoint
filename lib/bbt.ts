@@ -59,6 +59,16 @@ export function tableCaption(v: VariationVisual): string {
   return "";
 }
 
+/** LaTeX gốc của dòng tên bảng, dùng bởi bộ dựng KaTeX trong hình SVG. */
+export function tableCaptionLatex(v: VariationVisual): string {
+  const name = shortLabel(v.label, "y");
+  const expr = String(v.expression ?? "").replace(/\*/g, "").trim();
+  if (expr) return `${name} = ${expr}`;
+  const raw = String(v.label ?? "").trim();
+  if (raw && raw !== name) return raw.includes("=") ? raw : `${name} = ${raw}`;
+  return "";
+}
+
 export function isPlusInf(s: string) {
   const t = plainMath(s).replace(/\s/g, "");
   return t === "∞" || t === "+∞";
