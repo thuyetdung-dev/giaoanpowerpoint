@@ -20,7 +20,7 @@
  *    V11 dùng lib/mathexpr.ts (parser riêng, không eval).
  */
 
-import { useId } from "react";
+import { useId, type CSSProperties } from "react";
 import { compileExpression, detectHorizontalAsymptote, detectPoles } from "@/lib/mathexpr";
 import { graphPointsToDisplay } from "@/lib/graphpoints";
 import { soVN } from "@/lib/plot";
@@ -918,14 +918,16 @@ function Graph({ v }: { v: GraphVisual }) {
 /* ------------------------------------------------------------------ */
 
 export function MathVisual({ visual }: { visual: Visual }) {
+  let content = null;
   switch (visual.type) {
-    case "formula": return <Formula v={visual} />;
-    case "variation_table": return <VariationTable v={visual} />;
-    case "sign_chart": return <SignChart v={visual} />;
-    case "graph": return <Graph v={visual} />;
-    default:
-      return isExtraVisual(visual) ? <ExtraVisual visual={visual} /> : null;
+    case "formula": content = <Formula v={visual} />; break;
+    case "variation_table": content = <VariationTable v={visual} />; break;
+    case "sign_chart": content = <SignChart v={visual} />; break;
+    case "graph": content = <Graph v={visual} />; break;
+    default: content = isExtraVisual(visual) ? <ExtraVisual visual={visual} /> : null;
   }
+  const size = Math.max(20, Math.min(48, visual.fontSize ?? 32));
+  return <div className="math-visual-size" style={{ "--visual-font-scale": size / 32 } as CSSProperties}>{content}</div>;
 }
 
 export { VISUAL_LABEL } from "@/lib/themes";
