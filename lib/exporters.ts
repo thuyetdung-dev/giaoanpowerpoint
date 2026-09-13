@@ -38,6 +38,7 @@ import {
   LAYOUT, SLIDE_W_IN, TYPO, buildDeck, objectivesBox, textBandBox, toBullets as splitBullets,
   visualBox, visualImageBox, type Box,
 } from "./slides";
+import { APP_LABEL } from "./version";
 
 const PPTX_VERSION = "4.0.1";
 
@@ -322,7 +323,7 @@ function addFooter(slide: any, t: Theme, lesson: Lesson) {
   slide.addText(`${lesson.subject || "Toán"} · Lớp ${lesson.grade || "THPT"}${lesson.book ? " · " + lesson.book : ""}`, {
     x: 0.62, y: LAYOUT.footer.y, w: 7, h: LAYOUT.footer.h, fontFace: t.bodyFont, fontSize: LAYOUT.footer.pt, color: t.muted, margin: 0,
   });
-  slide.addText("LessonStudio V11", {
+  slide.addText(APP_LABEL, {
     x: 10.4, y: LAYOUT.footer.y, w: 2.3, h: LAYOUT.footer.h, fontFace: t.bodyFont, fontSize: LAYOUT.footer.pt,
     color: t.muted, align: "right", margin: 0,
   });
@@ -407,7 +408,7 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
   const t = getTheme(lesson.theme);
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
-  pptx.author = meta?.teacher || "LessonStudio V11";
+  pptx.author = meta?.teacher || APP_LABEL;
   pptx.company = meta?.school || "";
   pptx.subject = "Bài giảng PowerPoint môn Toán THPT";
   pptx.title = lesson.title;

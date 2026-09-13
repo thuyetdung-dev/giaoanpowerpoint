@@ -25,6 +25,7 @@ import { SlideFrame, Presenter } from "@/components/SlideView";
 import { buildDeck, findSlideForSection, outlineDeck } from "@/lib/slides";
 import { COMMON_RULES, VISUAL_GUIDE, readVisualJson, sampleFor } from "@/lib/visualguide";
 import { khaoSatHamSo } from "@/lib/khaosat";
+import { APP_LABEL } from "@/lib/version";
 import {
   duplicateEntry, listLibrary, migrateLegacyDraft, newId, QUOTA_HINT, readActiveId,
   readEntry, readForm, removeEntry, saveEntry, writeActiveId, writeForm, type LibraryMeta,
@@ -713,6 +714,13 @@ export default function Page() {
             Dùng khoá chung của nhà trường
           </label>
 
+          {useServerKey && (
+            <p className="key-note">
+              Chế độ này cần khoá AI được cấu hình trên Vercel. Bấm “Dò” để kiểm tra;
+              nếu chưa có, phần mềm sẽ cho biết chính xác biến môi trường cần bổ sung.
+            </p>
+          )}
+
           {!useServerKey && (
             <>
               <label>🔑 Khoá API {PROVIDERS.find((p) => p.id === provider)?.label}
@@ -757,7 +765,7 @@ export default function Page() {
           <div className="triangle">◩</div>
           <div>
             <h1>Trợ lý soạn PowerPoint Toán THPT</h1>
-            <p>Phiên bản 11 · Bám Chương trình GDPT 2018 · 16 loại hình Toán · Kiểm định chéo bằng đạo hàm số học</p>
+            <p>{APP_LABEL} · Bám Chương trình GDPT 2018 · 16 loại hình Toán · Kiểm định chéo bằng đạo hàm số học</p>
           </div>
         </header>
 
