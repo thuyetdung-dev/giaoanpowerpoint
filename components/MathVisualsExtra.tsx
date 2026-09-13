@@ -1137,6 +1137,44 @@ function Oxyz({ v }: { v: OxyzVisual }) {
   };
   const O = proj(0, 0, 0);
 
+  /**
+   * Xếp nhãn điểm theo nhiều vị trí ứng viên và tránh các nhãn đã đặt.
+   * V12.7 luôn đặt mọi nhãn sang phải-trên nên các điểm có hình chiếu gần nhau
+   * (đặc biệt bài GPS) chồng thành một cụm không đọc được.
+   */
+  const pointLabelLayout = (() => {
+    const used: Array<{ x0: number; y0: number; x1: number; y1: number }> = [];
+    return dsPoint.map((q, i) => {
+      const pt = proj(q.x, q.y, q.z);
+      const label = q.label
+        ? `${q.label}(${soVN(q.x)}; ${soVN(q.y)}; ${soVN(q.z)})`
+        : `(${soVN(q.x)}; ${soVN(q.y)}; ${soVN(q.z)})`;
+      const width = Math.min(W * 0.44, beRongChu(label, fs, 0.54));
+      const candidates = [
+        [fs * 0.48, -fs * 0.42, "start"],
+        [-fs * 0.48, -fs * 0.42, "end"],
+        [fs * 0.48, fs * 1.05, "start"],
+        [-fs * 0.48, fs * 1.05, "end"],
+        [0, -fs * (1.25 + i * 0.15), "middle"],
+        [0, fs * (1.55 + i * 0.15), "middle"],
+      ] as Array<[number, number, "start" | "middle" | "end"]>;
+      const makeBox = (x: number, y: number, anchor: "start" | "middle" | "end") => {
+        const x0 = anchor === "start" ? x : anchor === "middle" ? x - width / 2 : x - width;
+        return { x0, y0: y - fs, x1: x0 + width, y1: y + fs * 0.25 };
+      };
+      let chosen = candidates[0];
+      for (const c of candidates) {
+        const box = makeBox(pt[0] + c[0], pt[1] + c[1], c[2]);
+        const inside = box.x0 >= 8 && box.x1 <= W - 8 && box.y0 >= leTren && box.y1 <= H - 8;
+        const clear = used.every((u) => box.x1 + 8 < u.x0 || box.x0 > u.x1 + 8 || box.y1 + 5 < u.y0 || box.y0 > u.y1 + 5);
+        if (inside && clear) { chosen = c; break; }
+      }
+      const x = pt[0] + chosen[0], y = pt[1] + chosen[1];
+      used.push(makeBox(x, y, chosen[2]));
+      return { x, y, anchor: chosen[2], label };
+    });
+  })();
+
   /* Vạch chia trên ba trục — không có thì hình vẽ không kiểm được: A(2; 1; 3)
      nhìn vào chỉ thấy một chấm lơ lửng. */
   const vach = Array.from({ length: range }, (_, i) => i + 1);
@@ -1250,13 +1288,14 @@ function Oxyz({ v }: { v: OxyzVisual }) {
       {dsPoint.map((q, i) => {
         const pt = proj(q.x, q.y, q.z);
         const chan = proj(q.x, q.y, 0);
+        const placed = pointLabelLayout[i];
         return (
           <g key={i}>
             <line x1={pt[0]} y1={pt[1]} x2={chan[0]} y2={chan[1]} stroke="#9AA9B8" strokeDasharray="5 4" />
             <line x1={O[0]} y1={O[1]} x2={chan[0]} y2={chan[1]} stroke="#9AA9B8" strokeDasharray="5 4" />
             <circle cx={pt[0]} cy={pt[1]} r="5.5" fill={PALETTE[i % PALETTE.length]} stroke="#fff" strokeWidth="1.4" />
-            <text x={pt[0] + fs * 0.35} y={pt[1] - fs * 0.35} className="chart-tick svg-halo">
-              {q.label ? `${q.label}(${soVN(q.x)}; ${soVN(q.y)}; ${soVN(q.z)})` : `(${soVN(q.x)}; ${soVN(q.y)}; ${soVN(q.z)})`}
+            <text x={placed.x} y={placed.y} textAnchor={placed.anchor} className="chart-tick svg-halo">
+              {placed.label}
             </text>
           </g>
         );
