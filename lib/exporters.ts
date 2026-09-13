@@ -146,6 +146,10 @@ async function htmlToPng(node: HTMLElement, scale = 3, bg = "#ffffff"): Promise<
 
 async function nodeToPng(node: HTMLElement): Promise<{ data: string; w: number; h: number } | null> {
   try {
+    const htmlMath = node.matches?.("[data-export-html]")
+      ? node
+      : node.querySelector<HTMLElement>("[data-export-html]");
+    if (htmlMath) return await htmlToPng(htmlMath);
     const svg = node.tagName.toLowerCase() === "svg" ? (node as unknown as SVGSVGElement) : node.querySelector("svg");
     if (svg) return await svgToPng(svg);
     return await htmlToPng(node);
