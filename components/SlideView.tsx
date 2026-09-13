@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { APP_LABEL } from "@/lib/version";
 import { MathVisual, MixedMath } from "./MathVisuals";
 import type { Lesson } from "@/lib/types";
 import { getTheme, PHASE_META, VISUAL_LABEL, type Theme } from "@/lib/themes";
@@ -113,7 +114,12 @@ function Footer({ t, lesson }: { t: Theme; lesson: Lesson }) {
         className="sl-footer sl-right"
         style={{ right: px(0.62), top: px(LAYOUT.footer.y), fontSize: pt(LAYOUT.footer.pt), color: `#${t.muted}`, fontFamily: `"${t.bodyFont}", sans-serif` }}
       >
-        LessonStudio V11
+        {/* Tên + số phiên bản lấy từ lib/version.ts. Trước V12.5 chỗ này ghi
+            CỨNG "LessonStudio V11" nên màn trình chiếu và ảnh xem trước vẫn đề
+            V11 sau khi đã nâng lên V12.x — thầy Dũng nhìn vào tưởng gói chưa
+            lên. Đây là chỗ CUỐI CÙNG còn ghi cứng; tests.mjs nay quét cả mã
+            nguồn để không tệp nào tái phạm. */}
+        {APP_LABEL}
       </div>
     </>
   );

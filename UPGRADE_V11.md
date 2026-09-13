@@ -2,12 +2,12 @@
 
 Bản này được viết đè lên mã nguồn V10 và **đã build + kiểm thử thành công**.
 
-**Bản hiện tại: V12.4** — `next build` sạch, 222/222 kiểm thử đạt, 41/41 phép
+**Bản hiện tại: V12.5** — `next build` sạch, 223/223 kiểm thử đạt, 41/41 phép
 kiểm OCR đạt, 42/42 phép kiểm đường đi JSON, 26/26 loại
 hình Toán có chữ nền ≥ 32 pt khi in lên slide, 47/47 trường hợp trong bộ rà soát
 hình đều đạt và **cả 47 đều qua chính bộ kiểm định của phần mềm, không hình nào
 bị chặn xuất**, hai bài giảng mẫu xuất thử mở được bằng LibreOffice, không khối
-chữ nào tràn khung. Xem mục 5 → 13 để tự chạy lại mọi phép đo.
+chữ nào tràn khung. Xem mục 5 → 14 để tự chạy lại mọi phép đo.
 
 ## 1. Tệp mới và tệp thay đổi
 
@@ -961,7 +961,50 @@ node scripts/shoot-editor.mjs     # cần next start -p 3123
 TESSDIR=/tmp/ocrtest/node_modules node scripts/check-ocr.mjs
 ```
 
-## 14. Việc nên làm tiếp (chưa nằm trong bản này)
+## 14. V12.5 — Chỗ cuối cùng còn ghi cứng số phiên bản
+
+Thầy Dũng gửi ảnh màn trình chiếu: chân slide vẫn đề **"LessonStudio V11"** dù
+phần mềm đã chạy bản mới, và hỏi lỗi ở đâu.
+
+**Phần mềm chạy đúng bản mới. Lỗi nằm ở một dòng chữ.**
+
+`components/SlideView.tsx` dòng 116 ghi **cứng** chuỗi `LessonStudio V11`. Bản
+V12.2 đã đưa số phiên bản về `lib/version.ts` và nối vào bốn nơi — tiêu đề
+trang, dòng dưới tiêu đề, chân slide PowerPoint, câu mở đầu prompt — nhưng
+**sót đúng tệp này**. Mà tệp này lại vẽ:
+
+- khung **xem trước** trong trình biên tập,
+- màn **TRÌNH CHIẾU** toàn màn hình (đúng màn thầy chụp),
+- **Trình chiếu HTML** xuất ra,
+- **Ảnh PNG** xem trước.
+
+Nghĩa là bốn chỗ thầy nhìn nhiều nhất đều đề số cũ, trong khi tệp PowerPoint
+xuất ra thì đã đúng. Tôi bảo thầy kiểm phiên bản ở dòng dưới tiêu đề và ở chân
+slide PowerPoint — hai chỗ ấy đúng, nên lỗi không lộ ra qua cách kiểm tôi đưa.
+
+### 14.1 Sửa, và chặn đường tái phạm
+
+Chỗ đó nay lấy `APP_LABEL`. Nhưng sửa một dòng thì lần sau vẫn có thể sót một
+dòng khác, nên `tests.mjs` thêm một phép kiểm **quét toàn bộ mã nguồn**
+(`app/`, `components/`, `lib/`) tìm mọi chuỗi dạng `LessonStudio V<số>` hay
+`Phiên bản <số>`. Chỉ `lib/version.ts` được phép ghi số.
+
+Phép kiểm **bỏ chú thích trước khi quét** — lời giải thích được phép nhắc lại
+chuỗi cũ để kể vì sao từng sai; chỉ mã chạy thật mới bị cấm. (Bản đầu tôi quên
+điều này và phép kiểm bắt lỗi ngay chính lời chú thích tôi vừa viết.)
+
+### 14.2 Đã kiểm tận nơi, không suy đoán
+
+Nạp bài mẫu vào bản dựng thật rồi đọc chữ ở chân khung bằng trình duyệt:
+
+| Chỗ | V12.4 | V12.5 |
+|---|---|---|
+| Dòng dưới tiêu đề trang chủ | LessonStudio V12.4 | LessonStudio V12.5 |
+| Chân khung xem trước | **LessonStudio V11** | LessonStudio V12.5 |
+| Chân màn TRÌNH CHIẾU | **LessonStudio V11** | LessonStudio V12.5 |
+| Chân slide PowerPoint xuất ra | LessonStudio V12.4 | LessonStudio V12.5 |
+
+## 15. Việc nên làm tiếp (chưa nằm trong bản này)
 
 1. Bật `"strict": true` trong `tsconfig.json` rồi sửa dần các cảnh báo.
 2. Thêm ESLint config (`next lint` hiện không có cấu hình).

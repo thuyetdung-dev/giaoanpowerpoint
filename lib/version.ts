@@ -10,5 +10,5 @@
  * chỗ không thể lệch nhau âm thầm.
  */
 export const APP_NAME = "LessonStudio";
-export const APP_VERSION = "12.4";
+export const APP_VERSION = "12.5";
 export const APP_LABEL = `${APP_NAME} V${APP_VERSION}`;

@@ -649,5 +649,34 @@ eq("prompt chỉ đúng chỗ nạp tệp trong phần mềm", pr.includes("Mở
 eq("prompt mang đúng số phiên bản đang chạy", pr.includes(APP_LABEL), true);
 eq("prompt dùng lại nguyên bộ quy tắc hình của phần mềm", pr.includes(VISUAL_SPEC), true);
 
+// --- V12.5: KHÔNG tệp nào được ghi cứng số phiên bản ---
+/* Vì sao có phép kiểm quét mã nguồn này: bản V12.2 đã đưa số phiên bản về một
+   chỗ và nối vào bốn nơi, nhưng components/SlideView.tsx vẫn ghi cứng
+   "LessonStudio V11". Chân MÀN TRÌNH CHIẾU lấy chữ từ đó, nên thầy Dũng nâng
+   lên V12.x rồi mở trình chiếu vẫn thấy V11 và tưởng gói chưa lên. Một chỗ sót
+   thì mắt người không soi ra được; để máy quét. */
+{
+  const { readdirSync, readFileSync, statSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const quet = (thuMuc) => readdirSync(thuMuc).flatMap((ten) => {
+    const d = join(thuMuc, ten);
+    if (statSync(d).isDirectory()) return quet(d);
+    return /\.(ts|tsx)$/.test(ten) ? [d] : [];
+  });
+  const phamLoi = [];
+  for (const tep of [...quet("app"), ...quet("components"), ...quet("lib")]) {
+    if (tep.endsWith("lib/version.ts")) continue;   // chỗ được phép ghi số
+    /* BỎ CHÚ THÍCH trước khi quét: lời giải thích được phép nhắc lại chuỗi
+       cũ để kể vì sao từng sai. Chỉ MÃ CHẠY THẬT mới bị cấm ghi cứng. */
+    const noiDung = readFileSync(tep, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/^\s*\/\/.*$/gm, " ");
+    /* "LessonStudio V11", "Phiên bản 11", "V12.2"… — mọi cách ghi cứng. */
+    const m = noiDung.match(/LessonStudio\s+V\d|Phiên bản\s+\d+/g);
+    if (m) phamLoi.push(`${tep}: ${[...new Set(m)].join(", ")}`);
+  }
+  eq("không tệp mã nguồn nào ghi cứng số phiên bản", phamLoi, []);
+}
+
 console.log(`\n${pass} kiểm thử đạt, ${fail} lỗi`);
 process.exit(fail?1:0);
