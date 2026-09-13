@@ -13,7 +13,7 @@
  */
 
 import katex from "katex";
-import { splitMathSegments } from "@/lib/latex";
+import { latexToUnicode, splitMathSegments } from "@/lib/latex";
 
 /**
  * `\displaystyle`: phân số giữ cỡ đầy đủ và cận của "lim" nằm ngay dưới, đúng
@@ -52,7 +52,7 @@ export function MixedMath({ value, compact = false }: { value: string; compact?:
     <>
       {parts.map((part, i) => part.math
         ? <span className="math-keep" key={i}><MathText value={part.value} compact={compact} /></span>
-        : <span key={i}>{part.value}</span>)}
+        : <span key={i}>{part.value.includes("\\") ? latexToUnicode(part.value).text : part.value}</span>)}
     </>
   );
 }
