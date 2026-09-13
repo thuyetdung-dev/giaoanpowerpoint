@@ -21,6 +21,7 @@ import type {
 } from "./types";
 import { compileExpression, numericDerivative, evalAt, detectPoles } from "./mathexpr";
 import { latexToUnicode, mixedLatexToUnicode } from "./latex";
+import { isMeaningfulVisual } from "./slides";
 
 export type AuditLevel = "error" | "warning" | "tip" | "ok";
 export type AuditItem = {
@@ -123,6 +124,13 @@ function auditSection(s: Section, index: number, out: AuditItem[]) {
 
 function auditVisual(v: Visual, section: number, visual: number, out: AuditItem[]) {
   const at = { section, visual };
+  if (!isMeaningfulVisual(v)) {
+    out.push({
+      level: "warning", code: "VISUAL_PLACEHOLDER", ...at,
+      message: "Hình công thức chỉ là mũi tên hoặc nội dung giữ chỗ; V12.8 sẽ không tạo slide riêng cho hình này.",
+      fix: "Thay bằng công thức đầy đủ nếu đây là nội dung cần giảng.",
+    });
+  }
   // Phép kiểm riêng cho TỪNG loại hình, thêm ở V12.0. Chạy trước để lỗi dữ liệu
   // hiện ra kể cả khi nhánh switch bên dưới không có gì để nói.
   kiemHinhThem(v, at, out);
