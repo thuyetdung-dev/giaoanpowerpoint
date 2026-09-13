@@ -454,3 +454,56 @@
 .khaosat-box p { margin: 0; font-size: 11.5px; line-height: 1.6; color: #5a6b7b; }
 .khaosat-box code { background: #eef2f6; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
 .export-actions .khaosat-btn { background: #0E8A72; border-color: #0E8A72; color: #fff; }
+
+/* ------------------------------------------------------------------ */
+/* PDF ảnh quét: mời đọc bằng OCR (V12.3)                              */
+/* ------------------------------------------------------------------ */
+/* Khung này phải NỔI hơn khung tài liệu thường: nó là chỗ phần mềm nhận
+   rằng tệp chưa đọc được và đề nghị một lối đi, chứ không phải một dòng
+   thông báo trôi qua rồi thôi. */
+.ocr-box {
+  display: grid; gap: 10px; margin-top: 12px; padding: 14px;
+  border: 1px solid #e0b978; border-left: 4px solid #E4913C; border-radius: 10px;
+  background: #fffaf2;
+}
+.ocr-box strong { font-size: 14px; color: #8a5211; }
+.ocr-box p { margin: 0; font-size: 12px; line-height: 1.65; color: #5a4a36; }
+.ocr-box .ocr-chu-y { padding: 8px 10px; border-radius: 8px; background: #fdf0dc; }
+.ocr-trang { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.ocr-trang label {
+  display: grid; gap: 4px; font: 700 11.5px/1.3 inherit; color: #6b5638; width: auto;
+}
+.ocr-trang input {
+  width: 92px; padding: 8px 10px; font-size: 14px; font-weight: 700;
+  border: 1px solid #d8b483; border-radius: 8px; background: #fff; color: #1f2d3a;
+}
+.ocr-trang .ocr-ghi { flex: 1 1 220px; font-size: 11.5px; line-height: 1.55; color: #7a684f; }
+.ocr-nut { display: flex; flex-wrap: wrap; gap: 8px; }
+.ocr-box button { width: auto; margin: 0; padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 800; }
+.ocr-box .ocr-chay { border: 0; background: #E4913C; color: #fff; }
+.ocr-box .ocr-chay:disabled { background: #d9cbb6; cursor: not-allowed; }
+.ocr-box .ocr-bo { border: 1px solid #d8b483; background: #fff; color: #8a5211; }
+.ocr-tiendo { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.ocr-tiendo span { flex: 1 1 200px; font-size: 12px; font-weight: 700; color: #6b5638; }
+.ocr-tiendo .ocr-dung { border: 1px solid #d8b483; background: #fff; color: #8a5211; }
+.ocr-thanh {
+  flex: 1 1 100%; height: 10px; border-radius: 6px; background: #f0e0c6; overflow: hidden;
+}
+.ocr-thanh i { display: block; height: 100%; background: #E4913C; transition: width .25s ease; }
+
+/* ------------------------------------------------------------------ */
+/* Nhờ AI ngoài soạn JSON (V12.4)                                      */
+/* ------------------------------------------------------------------ */
+.prompt-box {
+  display: grid; gap: 10px; margin-top: 12px; padding: 14px;
+  border: 1px solid #bfd6cc; border-left: 4px solid #0E8A72; border-radius: 10px;
+  background: #f4fbf8;
+}
+.prompt-box strong { font-size: 14px; color: #0b5c4c; }
+.prompt-box p { margin: 0; font-size: 12px; line-height: 1.65; color: #40564f; }
+.prompt-box .prompt-ghi { padding: 8px 10px; border-radius: 8px; background: #e6f4ef; }
+.prompt-box code { background: #e2efe9; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+.prompt-nut { display: flex; flex-wrap: wrap; gap: 8px; }
+.prompt-box button { width: auto; margin: 0; padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 800; }
+.prompt-box .prompt-chep { border: 0; background: #0E8A72; color: #fff; }
+.prompt-box .prompt-tai { border: 1px solid #a9cdc0; background: #fff; color: #0b5c4c; }

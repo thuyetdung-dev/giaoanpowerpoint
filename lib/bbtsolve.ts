@@ -301,3 +301,42 @@ export function tableMatches(
     chuan(cu.derivative) === chuan(moi.derivative)
   );
 }
+
+/**
+ * BẢNG CÓ BỊ THU HẸP MIỀN KHÔNG? (V12.4)
+ *
+ * Bài toán thực tế hầu như luôn kèm điều kiện: số tạ tôm x > 0, số sản phẩm
+ * x ≥ 0, cạnh hình vuông x > 0. Giáo viên lập bảng biến thiên trên đúng miền ấy
+ * là ĐÚNG về sư phạm — nhưng phần mềm giải biểu thức trên cả ℝ, nên bảng tự
+ * tính được có thêm nhánh x < 0.
+ *
+ * Trước V12.4, bộ dựng hình lấy bảng tự tính thay vào, thế là slide "chi phí
+ * nuôi tôm" hiện ra nhánh x âm — sai hẳn với đề bài, mà không có lỗi nào báo.
+ *
+ * Hàm này nhận ra tình huống đó: mọi mốc trong bảng của giáo viên đều là mốc
+ * CÓ THẬT của bảng tự tính, nhưng ít mốc hơn — tức là một đoạn thu hẹp. Gặp thế
+ * thì GIỮ NGUYÊN bảng của giáo viên (xem components/MathVisuals.tsx) và nói rõ
+ * là phần mềm không tự kiểm chứng được (xem lib/audit.ts).
+ *
+ * Nói thẳng giới hạn: phần mềm CHƯA kiểm chứng được bảng trên miền con — nó chỉ
+ * biết đứng yên thay vì làm sai. Muốn kiểm được thì phải giải lại biểu thức có
+ * kèm miền xác định, việc đó để bản sau.
+ */
+export function laThuHepMien(
+  cu: { x?: string[] },
+  moi: SolvedTable,
+): boolean {
+  if (!moi.ok) return false;
+  const cuX = cu.x ?? [];
+  if (cuX.length < 2 || cuX.length >= moi.x.length) return false;
+  const chuan = (t: string) => String(t).replace(/\s|\\left|\\right|\{|\}/g, "");
+  const moiChuan = moi.x.map(chuan);
+  /* Mọi mốc của giáo viên phải là mốc có thật, và phải giữ đúng thứ tự. */
+  let tim = 0;
+  for (const t of cuX.map(chuan)) {
+    const k = moiChuan.indexOf(t, tim);
+    if (k < 0) return false;
+    tim = k + 1;
+  }
+  return true;
+}

@@ -119,18 +119,52 @@ export function latexToUnicode(input: string): LatexConvertResult {
     "1/2": "½", "1/3": "⅓", "2/3": "⅔", "1/4": "¼", "3/4": "¾",
     "1/5": "⅕", "1/6": "⅙", "1/8": "⅛", "3/8": "⅜", "5/8": "⅝", "7/8": "⅞",
   };
+  /**
+   * PHÂN SỐ CÓ NGOẶC LỒNG (sửa ở V12.4).
+   *
+   * Bản cũ bắt hai nhóm bằng biểu thức chính quy `\{([^{}]*)\}` — tức là nhóm
+   * KHÔNG được chứa ngoặc nào nữa. Gặp `\frac{36}{x^{2}}` (mẫu có `x^{2}`) thì
+   * không khớp, `\frac` rơi xuống mục "lệnh lạ", và chữ in ra slide thành
+   * "frac36x²". Đây là dạng phân số thường gặp bậc nhất của môn Toán, mà chính
+   * prompt của phần mềm lại dạy giáo viên viết đúng như vậy.
+   *
+   * Nay đếm ngoặc để lấy đúng nhóm cân bằng, nên lồng bao nhiêu tầng cũng được.
+   */
+  const nhomCanBang = (chuoi: string, moNgoac: number): { noiDung: string; ketThuc: number } | null => {
+    if (chuoi[moNgoac] !== "{") return null;
+    let sau = 0;
+    for (let k = moNgoac; k < chuoi.length; k++) {
+      if (chuoi[k] === "{") sau++;
+      else if (chuoi[k] === "}") {
+        sau--;
+        if (sau === 0) return { noiDung: chuoi.slice(moNgoac + 1, k), ketThuc: k + 1 };
+      }
+    }
+    return null;
+  };
   for (let i = 0; i < 6; i++) {
-    s = s.replace(/\\[dt]?frac\{([^{}]*)\}\{([^{}]*)\}/g, (_m, a, b) => {
-      const key = `${a}/${b}`;
-      if (NICE[key]) return NICE[key];
+    const m = /\\[dt]?frac\{/.exec(s);
+    if (!m) break;
+    const batDau = m.index;
+    const tu = nhomCanBang(s, batDau + m[0].length - 1);
+    if (!tu) break;
+    const mau = nhomCanBang(s, tu.ketThuc);
+    if (!mau) break;
+    const a = tu.noiDung, b = mau.noiDung;
+    const key = `${a}/${b}`;
+    let thay: string;
+    if (NICE[key]) thay = NICE[key];
+    else {
       // Unicode không có phân số hai tầng tổng quát. Vẫn trả về dạng một dòng
       // để chỗ nào cần chữ thuần (ghi chú, phiếu học tập) còn dùng được, nhưng
       // báo lossy để slide dựng lại bằng KaTeX.
       lossy = true;
       const wrapA = /^[0-9a-zA-Z]+$/.test(a) ? a : `(${a})`;
       const wrapB = /^[0-9a-zA-Z]+$/.test(b) ? b : `(${b})`;
-      return `${wrapA}/${wrapB}`;
-    });
+      thay = `${wrapA}/${wrapB}`;
+    }
+    s = s.slice(0, batDau) + thay + s.slice(mau.ketThuc);
+    i = -1;   // còn phân số nữa thì làm tiếp, kể cả phân số lồng trong phân số
   }
 
   /**

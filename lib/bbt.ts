@@ -151,3 +151,15 @@ export function computeLevels(v: VariationVisual): { left: number[]; right: numb
   return out;
 }
 
+
+/**
+ * TÊN ĐẠO HÀM viết đúng lối Toán (V12.4).
+ *
+ * Bảng biến thiên ghi hàng đạo hàm bằng cách nối thêm dấu phẩy vào tên hàm, nên
+ * nhãn "f(x)" cho ra "f(x)′" — sai ký hiệu. Dấu phẩy đi liền TÊN HÀM, không đi
+ * sau biến: phải là f′(x). Với "y" thì y′ vẫn đúng nên không đổi gì.
+ */
+export function tenDaoHam(ten: string): string {
+  const m = /^([^()]+)(\([^()]*\))$/.exec(ten.trim());
+  return m ? `${m[1]}′${m[2]}` : `${ten}′`;
+}

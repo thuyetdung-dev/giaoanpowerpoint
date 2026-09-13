@@ -28,6 +28,9 @@ const CO_Y = {
   bbt_khong_co_bieu_thuc: ["BBT_DERIVATIVE_LENGTH"],
   do_thi_tu_tim_tiem_can: ["GRAPH_ASYMPTOTE"],
   xet_dau_chi_dau_khoang: ["SC_UNKNOWN"],
+  /* Bảng thu hẹp trên miền con: phần mềm giữ nguyên bảng và nói rõ là chưa tự
+     kiểm chứng được — đúng như mong đợi, không phải lỗi. */
+  bbt_mien_con: ["BBT_MIEN_CON"],
 };
 
 let hong = 0;

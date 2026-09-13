@@ -143,3 +143,62 @@ export function buildTopUpPrompt(lesson: Lesson, missing: number, o: GenerateOpt
   const existing = lesson.sections.map((s, i) => `${i + 1}. [${s.phase || "?"}] ${s.heading}`).join("\n");
   return `Bài giảng "${lesson.title}" hiện có ${lesson.sections.length} slide:\n${existing}\n\nHãy tạo THÊM đúng ${missing} section nữa để hoàn thiện mạch bài, không lặp lại nội dung đã có. Ưu tiên bổ sung pha còn thiếu (luyện tập, vận dụng, củng cố). Trả về JSON dạng {"sections":[...]} theo đúng lược đồ đã quy định.${o.notes ? `\nYêu cầu riêng: ${o.notes}` : ""}`;
 }
+
+/* ------------------------------------------------------------------ */
+/* Prompt cho AI NGOÀI phần mềm (V12.4)                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * PROMPT ĐỂ GIÁO VIÊN DÁN VÀO Claude / Gemini / ChatGPT / NotebookLM.
+ *
+ * VÌ SAO CÓ. Thầy Dũng muốn nạp sách giáo khoa vào một AI có sẵn (nhất là
+ * NotebookLM — nó đọc PDF rất tốt, kể cả bản scan), lấy về tệp JSON, rồi
+ * giaoanpowerpoint chỉ việc dựng PowerPoint. Cách này gỡ được hai nút thắt cùng
+ * lúc: không cần khoá API trong phần mềm, và không phải chờ OCR chạy trong
+ * trình duyệt.
+ *
+ * VÌ SAO SINH RA TỪ MÃ NGUỒN CHỨ KHÔNG CHÉP TAY MỘT TỆP .md. Prompt này mô tả
+ * lược đồ dữ liệu của chính phần mềm. Chép thành một tệp rời thì mỗi lần lược
+ * đồ đổi, tệp ấy sai đi trong im lặng — và cái sai chỉ lộ ra khi thầy đã ngồi
+ * với AI xong xuôi, nạp tệp vào và bị báo lỗi. Nay nó dùng lại đúng VISUAL_SPEC
+ * và đúng bộ quy tắc mà phần mềm gửi cho AI của chính nó, nên hai bên không thể
+ * lệch nhau. Nút "Chép prompt" trên trang chủ lấy thẳng chuỗi này.
+ */
+export function promptChoAiNgoai(): string {
+  return `Bạn là chuyên gia soạn bài giảng môn Toán THPT Việt Nam theo Chương trình GDPT 2018.
+
+NHIỆM VỤ
+Đọc tài liệu tôi đính kèm (sách giáo khoa, sách giáo viên, chuyên đề, đề cương)
+và soạn nội dung slide cho MỘT bài học. Kết quả trả về là MỘT tệp JSON để tôi
+nạp vào phần mềm ${APP_LABEL} — phần mềm đó sẽ tự vẽ hình và dựng PowerPoint.
+
+TÔI CẦN SOẠN BÀI NÀY
+- Tên bài: [ghi tên bài, ví dụ: Tính đơn điệu và cực trị của hàm số]
+- Lớp: [10 / 11 / 12]
+- Bộ sách: [Kết nối tri thức / Chân trời sáng tạo / Cánh Diều]
+- Số tiết: [1 / 2 / 3]
+- Đối tượng học sinh: [Trung bình - khá / Khá - giỏi / Đại trà]
+- Số slide mong muốn: [khoảng 20-30]
+(Nếu tôi để trống dòng nào, bạn tự chọn cho hợp lý rồi ghi rõ đã chọn gì.)
+
+CÁCH TRẢ LỜI — QUAN TRỌNG NHẤT
+1. Chỉ in ra JSON. KHÔNG viết lời dẫn, KHÔNG giải thích, KHÔNG dùng dấu \`\`\`.
+   Ký tự đầu tiên phải là {  và ký tự cuối cùng phải là }
+2. JSON phải hợp lệ: không có dấu phẩy thừa trước } hoặc ], mọi tên trường bọc
+   trong dấu nháy kép, mọi dấu \\ trong công thức LaTeX phải viết thành \\\\.
+3. Tiếng Việt có dấu, đúng chính tả.
+4. Nếu bài dài quá một lần trả lời, hãy in phần đầu rồi dừng ở một dấu phẩy giữa
+   hai phần tử của "sections"; tôi sẽ gõ "tiếp" và bạn in tiếp, KHÔNG nhắc lại
+   phần đã in.
+
+TÔI LÀM GÌ VỚI KẾT QUẢ
+Chép toàn bộ JSON, dán vào Notepad, lưu thành tệp có đuôi .json (chọn
+Encoding = UTF-8), rồi vào ${APP_LABEL} → mục "2. Mở lại bài giảng đã lưu" →
+"Mở tệp JSON". Phần mềm sẽ tự kiểm tra lại toàn bộ số liệu Toán và báo nếu có
+chỗ sai.
+
+${SYSTEM_PROMPT.slice(SYSTEM_PROMPT.indexOf("TUYỆT ĐỐI KHÔNG viết kế hoạch bài dạy"))}
+
+NHẮC LẠI LẦN CUỐI: chỉ in JSON, bắt đầu bằng { và kết thúc bằng }, không có
+\`\`\` và không có bất kỳ câu chữ nào khác.`;
+}

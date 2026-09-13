@@ -1,8 +1,8 @@
 import { compileExpression, detectHorizontalAsymptote, detectPoles, numericDerivative } from "./_build/lib/mathexpr.js";
 import { latexToUnicode, mixedLatexToUnicode } from "./_build/lib/latex.js";
-import { computeLevels } from "./_build/lib/bbt.js";
+import { computeLevels, tenDaoHam } from "./_build/lib/bbt.js";
 import * as Lib from "./_build/lib/library.js";
-import { solveVariationTable, vietSo } from "./_build/lib/bbtsolve.js";
+import { laThuHepMien, solveVariationTable, vietSo } from "./_build/lib/bbtsolve.js";
 import { auditLesson, repairLesson } from "./_build/lib/audit.js";
 import { buildDeck, outlineDeck } from "./_build/lib/slides.js";
 import { VISUAL_GUIDE, readVisualJson, sampleFor } from "./_build/lib/visualguide.js";
@@ -11,11 +11,20 @@ import { gocChuan, gocRadian, soVN, ticksFit, ticksFitDoc } from "./_build/lib/p
 import { daoHam } from "./_build/lib/deriv.js";
 import { khaoSatHamSo } from "./_build/lib/khaosat.js";
 import { APP_LABEL, APP_VERSION } from "./_build/lib/version.js";
+import { promptChoAiNgoai, VISUAL_SPEC } from "./_build/lib/prompt.js";
+import { docTuOCR, LoiCanOCR } from "./_build/lib/importer.js";
+import { ghepTrang, coChuKhong, NGUON_MAC_DINH, TOI_DA_TRANG } from "./_build/lib/ocr.js";
+import { createRequire } from "node:module";
+const PKG = createRequire(import.meta.url)("./package.json");
 
 let pass=0, fail=0;
 const eq=(name,a,b,tol=1e-9)=>{const ok=(typeof a==="number"&&typeof b==="number")?Math.abs(a-b)<=tol:JSON.stringify(a)===JSON.stringify(b);ok?pass++:(fail++,console.log("FAIL",name,"got",JSON.stringify(a),"want",JSON.stringify(b)));};
 
-eq("nhãn phiên bản V12.2", [APP_VERSION, APP_LABEL], ["12.2", "LessonStudio V12.2"]);
+/* Buộc khớp package.json thay vì ghi cứng số: bản trước ghi "12.2" nên mỗi lần
+   lên phiên bản lại phải nhớ sửa tay ở đây. Nay quên là biết ngay. */
+eq("nhãn phiên bản khớp package.json",
+   [APP_VERSION, APP_LABEL],
+   [PKG.version.replace(/\.0$/, ""), `LessonStudio V${PKG.version.replace(/\.0$/, "")}`]);
 
 // --- Lỗi V10: -x^2 gây SyntaxError vì "-x**2" không hợp lệ trong JS
 eq("-x^2 tại x=3", compileExpression("-x^2").eval(3), -9);
@@ -579,6 +588,66 @@ eq("hai cực trị chỉ dùng \"và\"",
    "Đồ thị đi qua điểm cực đại $(-1; 4)$ và điểm cực tiểu $(1; 0)$.");
 eq("không có cực trị thì không có dòng đó",
    khaoSatHamSo("(x+1)/(x-1)").sections[2].content.includes("Đồ thị đi qua"), false);
+
+// --- V12.3: PDF ảnh quét là một tình huống CÓ LỐI ĐI, không phải lỗi cụt ---
+eq("LoiCanOCR mang theo tệp và số trang để giao diện mời đọc OCR",
+   (() => { const f = { name: "a.pdf" }; const e = new LoiCanOCR(f, 250);
+            return [e.name, e.file === f, e.soTrang, e instanceof Error]; })(),
+   ["LoiCanOCR", true, 250, true]);
+eq("ghép trang có đánh số trang, bỏ trang trắng",
+   ghepTrang([{ trang: 3, text: "Bài 1" }, { trang: 4, text: "   " }, { trang: 5, text: "Bài 2" }]),
+   "--- Trang 3 ---\nBài 1\n\n--- Trang 5 ---\nBài 2");
+eq("trang trắng thì coi như không đọc được chữ nào",
+   coChuKhong([{ trang: 1, text: "  " }, { trang: 2, text: "." }]), false);
+eq("đọc được một câu thì tính là có chữ",
+   coChuKhong([{ trang: 1, text: "Cho hàm số y = f(x) xác định trên khoảng K." }]), true);
+eq("tài liệu từ OCR ghi rõ là bản OCR và khoảng trang",
+   docTuOCR({ name: "sgk.pdf", size: 100 }, "abc", 1, 20).name, "sgk.pdf (OCR trang 1–20)");
+eq("mỗi lần OCR chặn ở 60 trang", TOI_DA_TRANG, 60);
+// Địa chỉ CDN phải ghim số phiên bản: thả lỏng thì một hôm CDN đổi bản mới là hỏng.
+eq("mọi địa chỉ tải bộ nhận dạng đều ghim phiên bản",
+   NGUON_MAC_DINH.every((n) => [n.thuVien, n.worker, n.loi, n.ngonNgu].every((u) => /@\d+\.\d+\.\d+/.test(u))), true);
+eq("có hai nguồn dự phòng, không đặt hết vào một CDN",
+   new Set(NGUON_MAC_DINH.map((n) => new URL(n.thuVien).host)).size, 2);
+
+// --- V12.4: phân số có NGOẶC LỒNG. Trước đây in ra slide thành "frac36x²" ---
+eq("phân số có mũ ở mẫu", latexToUnicode("\\frac{36}{x^{2}}").text, "36/(x²)");
+eq("phân số SGK hàm nhất biến",
+   latexToUnicode("\\frac{ad - bc}{(cx + d)^{2}}").text, "(ad - bc)/((cx + d)²)");
+eq("phân số lồng phân số", latexToUnicode("\\frac{\\frac{1}{2}}{x}").text, "(½)/x");
+eq("không còn báo \\frac là lệnh lạ",
+   mixedLatexToUnicode("chi phí $x + \\frac{36}{x^{2}}$ triệu").unknownCommands, []);
+
+// --- V12.4: bảng thu hẹp trên miền con thì GIỮ NGUYÊN, không thay bằng bảng cả ℝ ---
+const bangMienCon = { type: "variation_table", label: "f(x)", expression: "x+36/x",
+  x: ["0", "6", "+\\infty"], derivative: ["-", "0", "+"], values: ["+\\infty", "12", "+\\infty"] };
+const giaiCaR = solveVariationTable("x+36/x");
+eq("bảng tự tính trên cả ℝ có thêm nhánh x < 0", giaiCaR.x.length, 5);
+eq("nhận ra bảng chỉ xét trên miền con", laThuHepMien(bangMienCon, giaiCaR), true);
+eq("bảng đủ miền thì KHÔNG bị coi là thu hẹp",
+   laThuHepMien({ x: giaiCaR.x }, giaiCaR), false);
+eq("mốc lạ không có trong bảng tự tính thì không phải thu hẹp",
+   laThuHepMien({ x: ["0", "5", "+\\infty"] }, giaiCaR), false);
+eq("bảng miền con không bị chặn xuất, chỉ được nhắc",
+   mucCua(bangMienCon).filter((i) => i.level === "error"), []);
+eq("và có nói rõ là chưa tự kiểm chứng được",
+   mucCua(bangMienCon).some((i) => i.code === "BBT_MIEN_CON"), true);
+
+// --- V12.4: ký hiệu đạo hàm phải là f′(x), không phải f(x)′ ---
+eq("đạo hàm của f(x)", tenDaoHam("f(x)"), "f′(x)");
+eq("đạo hàm của y", tenDaoHam("y"), "y′");
+eq("đạo hàm của g(t)", tenDaoHam("g(t)"), "g′(t)");
+
+// --- V12.4: prompt cho AI ngoài phải mô tả ĐỦ lược đồ phần mềm hiểu ---
+const pr = promptChoAiNgoai();
+eq("prompt nêu đủ 16 loại hình",
+   ["formula","variation_table","sign_chart","graph","stat_chart","box_plot","prob_tree",
+    "unit_circle","number_line","inequality_region","solid_3d","oxyz","vector_2d","venn",
+    "data_table","quiz"].filter((t) => !pr.includes(`"${t}"`)), []);
+eq("prompt bắt AI chỉ in JSON, không dùng markdown fence", pr.includes("KHÔNG dùng dấu"), true);
+eq("prompt chỉ đúng chỗ nạp tệp trong phần mềm", pr.includes("Mở tệp JSON"), true);
+eq("prompt mang đúng số phiên bản đang chạy", pr.includes(APP_LABEL), true);
+eq("prompt dùng lại nguyên bộ quy tắc hình của phần mềm", pr.includes(VISUAL_SPEC), true);
 
 console.log(`\n${pass} kiểm thử đạt, ${fail} lỗi`);
 process.exit(fail?1:0);

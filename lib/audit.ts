@@ -14,7 +14,7 @@
  *   - Phân biệt rõ: lỗi (chặn xuất) / cảnh báo (vẫn xuất được) / gợi ý sư phạm.
  */
 
-import { solveVariationTable, tableMatches } from "./bbtsolve";
+import { laThuHepMien, solveVariationTable, tableMatches } from "./bbtsolve";
 import type {
   Lesson, Visual, VariationVisual, GraphVisual, StatChartVisual,
   BoxPlotVisual, ProbTreeVisual, RegionVisual, Section,
@@ -185,6 +185,23 @@ function auditVisual(v: Visual, section: number, visual: number, out: AuditItem[
  */
 function auditVariation(v: VariationVisual, section: number, visual: number, out: AuditItem[]) {
   const giai = v.expression ? solveVariationTable(v.expression) : null;
+  /* Bảng thu hẹp trên miền con: phần mềm KHÔNG kiểm chứng được, và cũng không
+     được ghi đè. Nói thật điều đó thay vì báo nhầm là "đã tự tính lại". */
+  if (giai?.ok && laThuHepMien(v, giai)) {
+    out.push({
+      level: "tip", code: "BBT_MIEN_CON", section, visual,
+      message: `Bảng chỉ xét trên một phần tập xác định của y = ${v.expression} (từ ${v.x?.[0]} đến ${v.x?.[v.x.length - 1]}).`,
+      fix: "Phần mềm giữ nguyên bảng này nhưng CHƯA tự kiểm chứng được bảng trên miền con — thầy cô soát lại dấu y′ giúp.",
+    });
+    /* Vẫn soi lỗi CÚ PHÁP (thiếu ô, độ dài mảng sai) — chỉ bỏ những phép kiểm
+       đối chiếu với biểu thức, vì chúng tính trên cả ℝ nên báo sai ở miền con. */
+    const rieng2: AuditItem[] = [];
+    auditVariationChiTiet(v, section, visual, rieng2);
+    rieng2
+      .filter((i) => !["BBT_SIGN_MISMATCH", "BBT_VALUE_MISMATCH", "BBT_NODE_NOT_ROOT"].includes(i.code))
+      .forEach((i) => out.push(i));
+    return;
+  }
   const tuTinhLai = !!giai?.ok && !tableMatches(v, giai);
   const rieng: AuditItem[] = [];
   auditVariationChiTiet(v, section, visual, rieng);

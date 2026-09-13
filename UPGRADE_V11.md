@@ -2,11 +2,12 @@
 
 Bản này được viết đè lên mã nguồn V10 và **đã build + kiểm thử thành công**.
 
-**Bản hiện tại: V12.2** — `next build` sạch, 195/195 kiểm thử đạt, 26/26 loại
+**Bản hiện tại: V12.4** — `next build` sạch, 222/222 kiểm thử đạt, 41/41 phép
+kiểm OCR đạt, 42/42 phép kiểm đường đi JSON, 26/26 loại
 hình Toán có chữ nền ≥ 32 pt khi in lên slide, 47/47 trường hợp trong bộ rà soát
 hình đều đạt và **cả 47 đều qua chính bộ kiểm định của phần mềm, không hình nào
 bị chặn xuất**, hai bài giảng mẫu xuất thử mở được bằng LibreOffice, không khối
-chữ nào tràn khung. Xem mục 5 → 11 để tự chạy lại mọi phép đo.
+chữ nào tràn khung. Xem mục 5 → 13 để tự chạy lại mọi phép đo.
 
 ## 1. Tệp mới và tệp thay đổi
 
@@ -762,7 +763,205 @@ LESSON=khaosat OUT=khaosat_V12_2 node scripts/build-sample-pptx.mjs
 python3 scripts/check-pptx.py .measure/khaosat_V12_2.pptx
 ```
 
-## 12. Việc nên làm tiếp (chưa nằm trong bản này)
+## 12. V12.3 — Đọc được sách giáo khoa bản scan
+
+Thầy Dũng tải `12-sgk-toan-12-tap-mot.pdf` lên và nhận về:
+
+> *Đã đọc 0 tài liệu. Không đọc được: 12-sgk-toan-12-tap-mot.pdf không có văn bản
+> có thể trích xuất. Nếu là PDF ảnh quét, hãy dùng OCR trước.*
+
+Câu ấy đúng về kỹ thuật nhưng vô dụng với người dùng: phần mềm nhận ra đúng vấn
+đề, gọi đúng tên giải pháp, rồi **đẩy việc khó sang cho giáo viên và bỏ đấy**.
+Sách giáo khoa bản scan là dạng tài liệu phổ biến nhất mà giáo viên có trong
+tay, nên phần mềm phải tự đọc được.
+
+### 12.1 Đọc ngay trong máy thầy, không gửi sách đi đâu
+
+`lib/ocr.ts` (mới): mỗi trang PDF được pdf.js vẽ ra một tấm ảnh, rồi Tesseract
+nhận dạng chữ tiếng Việt trên tấm ảnh đó. Toàn bộ chạy **trong trình duyệt**:
+
+- sách không rời khỏi máy — không lên máy chủ của phần mềm, không lên máy chủ
+  của ai khác;
+- Vercel không phải cài thêm gì, bản dựng không nặng thêm một byte.
+
+Bộ nhận dạng nặng khoảng **42 MB** nếu cài qua `npm`, nên nó **không** nằm trong
+`package.json` — mà được tải từ CDN **đúng lúc thầy bấm nút**, và chỉ tải lần
+đầu (trình duyệt nhớ lại tệp ngôn ngữ). Chính `lib/importer.ts` đã tải
+`pdf.worker` từ cùng CDN ấy và chạy tốt trên máy thầy, nên đây không phải một
+phụ thuộc mới lạ. Có **hai** nguồn (jsDelivr, unpkg) thử lần lượt, phòng khi
+mạng nhà trường chặn một cái.
+
+### 12.2 Giao diện: một lối đi, không phải một lời than
+
+Tải lên một PDF ảnh quét thì nay hiện một khung màu cam:
+
+- nói rõ tệp là ảnh quét và phần mềm đọc được;
+- cho chọn **đọc từ trang mấy đến trang mấy** (tối đa 60 trang một lần — chọn
+  đúng bài cần soạn thì nhanh hơn nhiều), kèm tổng số trang của tệp;
+- thanh **tiến độ** và nút **Dừng** — một quyển 250 trang mà bấm nhầm rồi không
+  dừng được thì thầy ngồi chờ mười lăm phút;
+- đọc xong thì tệp vào thẳng danh sách tài liệu nguồn, tên ghi rõ
+  `sgk.pdf (OCR trang 1–20)`, nội dung có đánh số trang để biết câu chữ lấy từ
+  đâu.
+
+### 12.3 Nói trước giới hạn, đừng để thầy tự phát hiện
+
+Khung ấy ghi thẳng hai điều, và bộ kiểm thử **bắt buộc** hai câu đó phải có mặt:
+
+1. **Chậm.** Đo thật: một trang A4 quét 200 dpi kín chữ tiếng Việt mất khoảng
+   **7 giây** (kể cả lúc khởi động bộ nhận dạng), đọc ra chừng 2.400 ký tự. Nên
+   con số nói với thầy là 5–10 giây mỗi trang, 20 trang chừng 2–3 phút — không
+   phải "vài giây".
+2. **Công thức Toán sẽ đọc sai.** Phân số, căn, chỉ số trên dưới, dấu tích phân
+   đều hỏng. Đó là giới hạn của mọi bộ OCR chữ thường. Dùng để cho AI biết bài
+   học nói về cái gì thì được; chép công thức từ đó thì không.
+
+### 12.4 Phép kiểm chạy thật, không giả lập
+
+`scripts/check-ocr.mjs` (mới) tự dựng một tệp PDF **chỉ gồm ảnh** — `pdftotext`
+trên tệp ấy ra rỗng, script tự kiểm điều đó trước rồi mới đo — rồi mở nó trong
+trình duyệt thật bằng đúng mã `lib/ocr.ts`, và đối chiếu chữ đọc được với chữ đã
+in ra ảnh. 41 phép kiểm, gồm:
+
+- từng câu phải nhận ra được ít nhất 80% số từ;
+- **dấu tiếng Việt** phải đúng: "đồng biến", "đạo hàm", "giá trị lớn nhất",
+  "bảng biến thiên", "định nghĩa";
+- phần giao diện: tải tệp lên thì hiện khung, bấm nút thì có thanh tiến độ, đọc
+  xong thì tệp vào danh sách, khung biến mất;
+- và ứng dụng phải gọi **đúng ba địa chỉ CDN đã ghim**. Thư viện nạp lúc chạy
+  thì không trình biên dịch nào soát hộ — sai một đường dẫn là thầy bấm nút và
+  không có gì xảy ra. Phép kiểm chuyển hướng CDN về bản cục bộ nhưng **giữ
+  nguyên địa chỉ ứng dụng gọi**, nên vẫn bắt được lỗi ghi sai đường dẫn.
+
+Không cài bộ nhận dạng ở máy thì script báo **BỎ QUA**, không báo đạt — một phép
+kiểm không chạy được phải nói rõ là nó không chạy.
+
+### 12.5 Số phiên bản: một chỗ duy nhất
+
+Trang chủ đang in "Phiên bản 11" trong khi phần mềm đã ở V12.2, nên trên máy
+thầy dòng ấy **đã bị sửa tay** thành "LessonStudio V12.2". Sửa tay thì lần nâng
+cấp sau bị ghi đè, và thầy nhìn thấy số cũ lại tưởng gói chưa lên.
+
+Nay `lib/version.ts` giữ số phiên bản, `tests.mjs` đối chiếu nó với
+`package.json` nên hai chỗ không thể lệch nhau âm thầm. Dòng chữ dưới tiêu đề
+trang chủ vì thế cũng thành **cách kiểm nhanh nhất** xem gói mới đã lên chưa.
+
+### 12.6 Tự chạy lại
+
+```bash
+npx tsc -p tsconfig.json
+npm run build
+node tests.mjs                                   # 205 kiểm thử
+SAMPLES=hinh node scripts/measure-visuals.mjs    # 47 hình
+node scripts/measure-visuals.mjs                 # 26 loại
+node scripts/audit-samples.mjs
+SAMPLES=mot node scripts/audit-samples.mjs
+node scripts/shoot-editor.mjs                    # cần next start -p 3123
+
+# OCR: cài bộ nhận dạng ra thư mục riêng (ĐỪNG thêm vào package.json)
+mkdir -p /tmp/ocrtest && cd /tmp/ocrtest && npm init -y
+npm i tesseract.js@6.0.1 @tesseract.js-data/vie
+cd - && TESSDIR=/tmp/ocrtest/node_modules node scripts/check-ocr.mjs
+
+LESSON=khaosat OUT=khaosat_V12_3 node scripts/build-sample-pptx.mjs
+python3 scripts/check-pptx.py .measure/khaosat_V12_3.pptx
+```
+
+### 12.7 Còn lại, nói thẳng
+
+- **Ảnh quét quá mờ hoặc nghiêng** thì OCR đọc ra chữ nhảm. Phần mềm kiểm rằng
+  có đọc được ít nhất 25 ký tự và báo nếu không, nhưng nó **không** đánh giá
+  được chữ đọc ra có đúng hay không — chỗ đó vẫn cần mắt của thầy.
+- **Trang hai cột** bị đọc trộn dòng của hai cột vào nhau.
+- **Máy phải vào được mạng** lần đầu để tải bộ nhận dạng (khoảng 15 MB). Mạng
+  chặn cả hai CDN thì tính năng này không chạy được, và phần mềm nói rõ như vậy
+  chứ không im lặng.
+
+## 13. V12.4 — Nhờ AI khác soạn JSON, phần mềm chỉ dựng PowerPoint
+
+Thầy Dũng đề nghị: nạp sách vào Claude / Gemini / ChatGPT / NotebookLM, lấy về
+tệp JSON, phần mềm chỉ việc dựng PowerPoint. Cách này gỡ hai nút thắt cùng lúc —
+không cần khoá API trong phần mềm, và NotebookLM đọc được cả PDF ảnh quét nên
+khỏi chờ OCR chạy trong trình duyệt.
+
+### 13.1 Prompt SINH RA TỪ MÃ NGUỒN, không chép tay
+
+`promptChoAiNgoai()` trong `lib/prompt.ts` dùng lại **nguyên** `VISUAL_SPEC` và
+bộ quy tắc mà phần mềm gửi cho AI của chính nó, chỉ thêm phần hướng dẫn riêng
+cho việc dán vào AI ngoài. Vì sao không viết một tệp `.md` rời: prompt này mô tả
+lược đồ dữ liệu của phần mềm, nên mỗi lần lược đồ đổi thì tệp rời sai đi **trong
+im lặng** — và cái sai chỉ lộ ra khi giáo viên đã ngồi với AI xong xuôi, nạp tệp
+vào rồi bị báo lỗi.
+
+Trang chủ có nút **📋 Chép prompt** và **⇩ Tải về tệp .txt** (cho máy trường
+chặn bộ nhớ tạm, và cho NotebookLM).
+
+### 13.2 Phép kiểm đi trọn đường, không chỉ đọc prompt
+
+`scripts/check-prompt-json.mjs` (mới) làm hai việc: soi prompt có mô tả đủ 16
+loại hình và các quy tắc chặn xuất hay không; rồi lấy `scripts/mau-json-tu-ai.json`
+— một bài giảng soạn **đúng theo prompt** — cho chạy qua **đúng những bước phần
+mềm chạy khi thầy bấm "Mở tệp JSON"**: `JSON.parse` → `auditLesson` → `buildDeck`.
+42 phép kiểm, gồm cả các điều kiện sư phạm mà prompt hứa hẹn (≥ 55% slide có
+hình, ≥ 2 slide trắc nghiệm, đủ sáu pha hoạt động, mọi bảng biến thiên đều khai
+`expression`).
+
+**Chạy lần đầu là ra ngay hai lỗi thật**, cả hai đều của phần mềm chứ không phải
+của prompt:
+
+### 13.3 Lỗi 1 — phân số có ngoặc lồng in ra slide thành "frac36x²"
+
+`latexToUnicode` bắt hai nhóm của `\frac` bằng `\{([^{}]*)\}` — nhóm **không
+được chứa ngoặc nào nữa**. Gặp `\frac{36}{x^{2}}` thì không khớp, `\frac` rơi
+xuống mục "lệnh lạ", và chữ in ra là `frac36x²`.
+
+Đây là dạng phân số thường gặp bậc nhất của môn Toán — `\frac{ad-bc}{(cx+d)^{2}}`,
+`\frac{-b}{3a}` — mà **chính prompt của phần mềm lại dạy giáo viên viết đúng như
+vậy**. Phần mềm tự mâu thuẫn: bảo viết thế, rồi báo cách viết ấy là lệnh lạ.
+
+Nay đếm ngoặc để lấy đúng nhóm cân bằng, lồng bao nhiêu tầng cũng được:
+
+| Viết vào | V12.3 | V12.4 |
+|---|---|---|
+| `\frac{36}{x^{2}}` | `frac36x²` + báo lệnh lạ | `36/(x²)` |
+| `\frac{ad - bc}{(cx + d)^{2}}` | hỏng | `(ad - bc)/((cx + d)²)` |
+| `\frac{\frac{1}{2}}{x}` | hỏng | `(½)/x` |
+
+### 13.4 Lỗi 2 — bảng biến thiên trên miền con bị thay bằng bảng trên cả ℝ
+
+Bài thực tế hầu như luôn kèm điều kiện: số tạ tôm $x > 0$, cạnh hình vuông
+$x > 0$. Giáo viên lập bảng trên đúng miền ấy là **đúng về sư phạm** — nhưng
+phần mềm giải biểu thức trên cả ℝ, thấy bảng "không khớp" nên **thay bằng bảng
+tự tính**, và slide "chi phí nuôi tôm" hiện ra cả nhánh $x < 0$ mà đề bài không
+hề có. Không lỗi nào báo.
+
+Nay `laThuHepMien()` nhận ra tình huống đó — mọi mốc của giáo viên đều là mốc có
+thật của bảng tự tính nhưng ít mốc hơn — và phần mềm **giữ nguyên bảng**, kèm
+một lời nhắc `BBT_MIEN_CON` nói thẳng: *chưa tự kiểm chứng được bảng trên miền
+con, thầy cô soát lại dấu y′ giúp*.
+
+Nói rõ giới hạn: phần mềm **chưa** kiểm chứng được bảng trên miền con; nó chỉ
+biết **đứng yên thay vì làm sai**. Muốn kiểm được thì phải giải lại biểu thức có
+kèm miền xác định — để bản sau.
+
+### 13.5 Thêm một chỗ nhỏ: ký hiệu đạo hàm
+
+Hàng đạo hàm ghép dấu phẩy vào tên hàm nên nhãn `f(x)` cho ra `f(x)′`. Dấu phẩy
+đi liền **tên hàm**, không đi sau biến: `tenDaoHam()` nay cho `f′(x)`. Nhãn `y`
+vẫn ra `y′` như cũ.
+
+### 13.6 Tự chạy lại
+
+```bash
+npm run verify                    # typecheck + 222 kiểm thử + build
+node scripts/check-prompt-json.mjs
+node scripts/audit-samples.mjs && SAMPLES=mot node scripts/audit-samples.mjs
+SAMPLES=hinh node scripts/measure-visuals.mjs && node scripts/measure-visuals.mjs
+node scripts/shoot-editor.mjs     # cần next start -p 3123
+TESSDIR=/tmp/ocrtest/node_modules node scripts/check-ocr.mjs
+```
+
+## 14. Việc nên làm tiếp (chưa nằm trong bản này)
 
 1. Bật `"strict": true` trong `tsconfig.json` rồi sửa dần các cảnh báo.
 2. Thêm ESLint config (`next lint` hiện không có cấu hình).

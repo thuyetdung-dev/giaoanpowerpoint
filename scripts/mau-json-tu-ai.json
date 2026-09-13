@@ -1,0 +1,167 @@
+{
+  "title": "Tính đơn điệu và cực trị của hàm số",
+  "subject": "Toán",
+  "grade": "12",
+  "book": "Kết nối tri thức",
+  "strand": "Đại số và Một số yếu tố Giải tích",
+  "objectives": [
+    "Nhận biết được tính đồng biến, nghịch biến của hàm số thông qua dấu của đạo hàm.",
+    "Xác định được điểm cực đại, điểm cực tiểu của hàm số bằng bảng biến thiên.",
+    "Vận dụng được đạo hàm để giải một bài toán tối ưu trong thực tiễn."
+  ],
+  "competencies": ["Tư duy và lập luận toán học", "Mô hình hoá toán học", "Giải quyết vấn đề toán học"],
+  "keywords": ["đơn điệu", "đồng biến", "nghịch biến", "cực trị", "bảng biến thiên"],
+  "sections": [
+    {
+      "heading": "Khởi động: Chi phí nuôi tôm",
+      "content": "Một hộ nuôi tôm ở Cà Mau tính được chi phí mỗi tạ tôm theo số tạ $x$ thả nuôi là $f(x) = x + \\frac{36}{x}$ (triệu đồng).\nThả càng nhiều thì chi phí mỗi tạ càng giảm mãi hay không?\nThả bao nhiêu tạ thì chi phí mỗi tạ rẻ nhất?",
+      "phase": "khoi_dong",
+      "level": "NB",
+      "minutes": 5,
+      "notes": "Cho học sinh đoán trước rồi mới tính. Đa số sẽ đoán càng nhiều càng rẻ — đó là chỗ để lật vấn đề.",
+      "questions": ["Theo em, chi phí mỗi tạ có giảm mãi khi thả thêm tôm không?"],
+      "visuals": [
+        {
+          "type": "graph",
+          "expression": "x+36/x",
+          "xMin": 0.5, "xMax": 16, "yMin": 0, "yMax": 30,
+          "xLabel": "x (tạ)", "yLabel": "f(x) (triệu đồng)"
+        }
+      ]
+    },
+    {
+      "heading": "Định nghĩa tính đơn điệu",
+      "content": "Cho hàm số $y = f(x)$ xác định trên khoảng $K$.\nHàm số đồng biến trên $K$ nếu với mọi $x_{1} < x_{2}$ thuộc $K$ thì $f(x_{1}) < f(x_{2})$.\nHàm số nghịch biến trên $K$ nếu với mọi $x_{1} < x_{2}$ thuộc $K$ thì $f(x_{1}) > f(x_{2})$.",
+      "phase": "kien_thuc",
+      "level": "NB",
+      "minutes": 6,
+      "notes": "Nhấn mạnh: đơn điệu luôn gắn với MỘT khoảng, không nói 'hàm đồng biến' trống không."
+    },
+    {
+      "heading": "Dấu của đạo hàm và chiều biến thiên",
+      "content": "Cho hàm số $y = f(x)$ có đạo hàm trên khoảng $K$.\nNếu $f'(x) > 0$ với mọi $x \\in K$ thì $f(x)$ đồng biến trên $K$.\nNếu $f'(x) < 0$ với mọi $x \\in K$ thì $f(x)$ nghịch biến trên $K$.",
+      "phase": "kien_thuc",
+      "level": "TH",
+      "minutes": 6,
+      "notes": "Đây là công cụ chính của cả bài: xét dấu đạo hàm thay cho so sánh trực tiếp.",
+      "visuals": [
+        {
+          "type": "sign_chart",
+          "label": "f'(x)",
+          "x": ["-\\infty", "-1", "1", "+\\infty"],
+          "signs": ["+", "0", "-", "0", "+"]
+        }
+      ]
+    },
+    {
+      "heading": "Ví dụ 1: Xét tính đơn điệu",
+      "content": "Xét hàm số $y = x^{3} - 3x + 2$.\nBước 1. Tập xác định $D = \\mathbb{R}$.\nBước 2. Đạo hàm $y' = 3x^{2} - 3$.\nBước 3. Giải $y' = 0 \\Leftrightarrow x = -1$ hoặc $x = 1$.",
+      "phase": "vi_du",
+      "level": "TH",
+      "minutes": 8,
+      "notes": "Làm chậm bước 3: nhắc học sinh luôn giải phương trình y' = 0 trước khi lập bảng."
+    },
+    {
+      "heading": "Ví dụ 1: Bảng biến thiên",
+      "content": "Từ dấu của $y'$, lập bảng biến thiên và đọc ra chiều biến thiên.\nHàm số đồng biến trên $(-\\infty; -1)$ và $(1; +\\infty)$, nghịch biến trên $(-1; 1)$.\nĐiểm cực đại $(-1; 4)$, điểm cực tiểu $(1; 0)$.",
+      "phase": "vi_du",
+      "level": "TH",
+      "minutes": 8,
+      "notes": "Chỉ vào mũi tên đi lên / đi xuống khi đọc bảng, đừng chỉ đọc số.",
+      "visuals": [
+        {
+          "type": "variation_table",
+          "label": "y",
+          "expression": "x^3-3*x+2",
+          "x": ["-\\infty", "-1", "1", "+\\infty"],
+          "derivative": ["+", "0", "-", "0", "+"],
+          "values": ["-\\infty", "4", "0", "+\\infty"]
+        }
+      ]
+    },
+    {
+      "heading": "Ví dụ 1: Đồ thị hàm số",
+      "content": "Đồ thị đi qua điểm cực đại $(-1; 4)$ và điểm cực tiểu $(1; 0)$.\nĐồ thị nhận điểm uốn $I(0; 2)$ làm tâm đối xứng.",
+      "phase": "vi_du",
+      "level": "VD",
+      "minutes": 6,
+      "notes": "Đối chiếu hình dáng đồ thị với chiều mũi tên trong bảng biến thiên vừa lập.",
+      "visuals": [
+        {
+          "type": "graph",
+          "expression": "x^3-3*x+2",
+          "xMin": -3, "xMax": 3, "yMin": -3, "yMax": 7
+        }
+      ]
+    },
+    {
+      "heading": "Luyện tập 1",
+      "content": "Quan sát bảng biến thiên bên dưới và chọn phương án đúng.",
+      "phase": "luyen_tap",
+      "level": "TH",
+      "minutes": 5,
+      "notes": "Cho cả lớp giơ tay chọn đáp án trước khi mở kết quả.",
+      "visuals": [
+        {
+          "type": "variation_table",
+          "label": "y",
+          "expression": "x^3-3*x+2",
+          "x": ["-\\infty", "-1", "1", "+\\infty"],
+          "derivative": ["+", "0", "-", "0", "+"],
+          "values": ["-\\infty", "4", "0", "+\\infty"]
+        },
+        {
+          "type": "quiz",
+          "question": "Hàm số nghịch biến trên khoảng nào?",
+          "options": ["$(-\\infty; -1)$", "$(-1; 1)$", "$(1; +\\infty)$", "$(0; 2)$"],
+          "answerIndex": 1,
+          "explanation": "Trên $(-1; 1)$ đạo hàm mang dấu âm nên hàm số nghịch biến."
+        }
+      ]
+    },
+    {
+      "heading": "Luyện tập 2",
+      "content": "Chọn phương án đúng về điểm cực trị của hàm số $y = x^{3} - 3x + 2$.",
+      "phase": "luyen_tap",
+      "level": "TH",
+      "minutes": 5,
+      "notes": "Nhắc phân biệt 'điểm cực đại của hàm số' (x = -1) và 'giá trị cực đại' (y = 4).",
+      "visuals": [
+        {
+          "type": "quiz",
+          "question": "Hàm số đạt cực tiểu tại điểm nào?",
+          "options": ["$x = -1$", "$x = 0$", "$x = 1$", "$x = 2$"],
+          "answerIndex": 2,
+          "explanation": "Tại $x = 1$ đạo hàm đổi dấu từ âm sang dương nên hàm số đạt cực tiểu."
+        }
+      ]
+    },
+    {
+      "heading": "Vận dụng: Trở lại bài toán nuôi tôm",
+      "content": "Với $f(x) = x + \\frac{36}{x}$ và $x > 0$ ta có $f'(x) = 1 - \\frac{36}{x^{2}}$.\n$f'(x) = 0 \\Leftrightarrow x = 6$.\nChi phí mỗi tạ nhỏ nhất là $12$ triệu đồng khi thả $6$ tạ — không phải càng nhiều càng rẻ.",
+      "phase": "van_dung",
+      "level": "VD",
+      "minutes": 8,
+      "notes": "Quay lại dự đoán ban đầu của lớp để học sinh thấy vì sao cần công cụ đạo hàm.",
+      "questions": ["Nếu chỉ có vốn thả 4 tạ thì chi phí mỗi tạ là bao nhiêu?"],
+      "visuals": [
+        {
+          "type": "variation_table",
+          "label": "f(x)",
+          "expression": "x+36/x",
+          "x": ["0", "6", "+\\infty"],
+          "derivative": ["-", "0", "+"],
+          "values": ["+\\infty", "12", "+\\infty"]
+        }
+      ]
+    },
+    {
+      "heading": "Củng cố",
+      "content": "Ba bước xét tính đơn điệu: tìm tập xác định, tính $y'$, lập bảng biến thiên.\nDấu của $y'$ quyết định chiều mũi tên.\n$y'$ đổi dấu qua một điểm thì tại đó hàm số đạt cực trị.",
+      "phase": "cung_co",
+      "level": "NB",
+      "minutes": 4,
+      "notes": "Cho học sinh nhắc lại ba bước bằng lời trước khi kết thúc tiết."
+    }
+  ]
+}

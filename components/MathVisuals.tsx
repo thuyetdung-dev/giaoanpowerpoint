@@ -31,8 +31,8 @@ import type {
   FormulaVisual,
 } from "@/lib/types";
 import { ExtraVisual, isExtraVisual } from "./MathVisualsExtra";
-import { computeLevels, isMinusInf, isPlusInf, plainMath, shortLabel, tableCaption } from "@/lib/bbt";
-import { solveVariationTable, tableMatches } from "@/lib/bbtsolve";
+import { computeLevels, isMinusInf, isPlusInf, plainMath, shortLabel, tableCaption, tenDaoHam } from "@/lib/bbt";
+import { laThuHepMien, solveVariationTable, tableMatches } from "@/lib/bbtsolve";
 import { GRAPH_H, GRAPH_W, SC_HEAD, SC_ROW_H, SC_W, VT_CAPTION_H, VT_H, VT_W, svgFontPx } from "@/lib/slides";
 
 /* ------------------------------------------------------------------ */
@@ -79,7 +79,10 @@ function VariationTable({ v }: { v: VariationVisual }) {
    * giữ nguyên — không có gì để đối chiếu thì không được đoán.
    */
   const daGiai = v.expression ? solveVariationTable(v.expression) : null;
-  const dungBanGiai = !!daGiai?.ok && (!v.x?.length || !tableMatches(v, daGiai));
+  /* Bảng thu hẹp trên một miền con (bài thực tế có điều kiện x > 0) thì GIỮ
+     NGUYÊN — thay bằng bảng trên cả ℝ là vẽ ra nhánh mà đề bài không có. */
+  const thuHep = !!daGiai && laThuHepMien(v, daGiai);
+  const dungBanGiai = !!daGiai?.ok && !thuHep && (!v.x?.length || !tableMatches(v, daGiai));
   const vv: VariationVisual = dungBanGiai
     ? { ...v, x: daGiai!.x, derivative: daGiai!.derivative, values: daGiai!.values, discontinuities: daGiai!.discontinuities }
     : v;
@@ -175,7 +178,7 @@ function VariationTable({ v }: { v: VariationVisual }) {
       <line x1="1" x2={W - 1} y1={dRow} y2={dRow} stroke="#263746" />
 
       <text x={L / 2} y={xRow - 18} className="bbt-label" style={{ fontSize: fs + 1 }}>x</text>
-      <text x={L / 2} y={dRow - 22} className="bbt-label" style={{ fontSize: fs + 1 }}>{`${name}′`}</text>
+      <text x={L / 2} y={dRow - 22} className="bbt-label" style={{ fontSize: fs + 1 }}>{tenDaoHam(name)}</text>
       <text x={L / 2} y={(yTop + yBottom) / 2 + fs / 3} className="bbt-label" style={{ fontSize: fs + 1 }}>{name}</text>
 
       {/* hàng x */}

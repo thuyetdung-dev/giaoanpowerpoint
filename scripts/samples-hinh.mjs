@@ -242,6 +242,16 @@ export const SAMPLES = {
     values: ["-\\infty", "4", "0", "+\\infty"],
   },
 
+  /* V12.4 — bài thực tế có điều kiện x > 0 (chi phí nuôi tôm). Bảng chỉ xét
+     trên (0; +∞). Phần mềm PHẢI giữ nguyên, không được thay bằng bảng trên cả ℝ
+     (bảng ấy có thêm nhánh x < 0 mà đề bài không hề có). */
+  bbt_mien_con: {
+    type: "variation_table", label: "f(x)", expression: "x+36/x",
+    x: ["0", "6", "+\\infty"],
+    derivative: ["-", "0", "+"],
+    values: ["+\\infty", "12", "+\\infty"],
+  },
+
   /* V12.1 — bảng có tham số m: KHÔNG có biểu thức nên không tính lại được.
      Thiếu dấu tại mốc thì phải ĐỂ TRỐNG. V12.0 tự ghi số 0 vào đó. */
   bbt_khong_co_bieu_thuc: {

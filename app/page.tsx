@@ -18,12 +18,14 @@ import { MathVisual, MixedMath, VISUAL_LABEL } from "@/components/MathVisuals";
 import { generateLesson, scanModels, scanModelsViaServer, PROVIDERS, type AiModel, type Provider } from "@/lib/ai";
 import type { Lesson, Section, Visual } from "@/lib/types";
 import { auditLesson, repairLesson, type AuditItem } from "@/lib/audit";
-import { readSource, type SourceDoc } from "@/lib/importer";
+import { docTuOCR, LoiCanOCR, readSource, type SourceDoc } from "@/lib/importer";
+import { ghepTrang, coChuKhong, ocrPdf, TOI_DA_TRANG, type TienDoOCR } from "@/lib/ocr";
 import { exportHtml, exportJson, exportPptx, exportPreviewImage, exportWorksheet } from "@/lib/exporters";
 import { THEMES, PHASE_META, getTheme } from "@/lib/themes";
 import { SlideFrame, Presenter } from "@/components/SlideView";
 import { buildDeck, findSlideForSection, outlineDeck } from "@/lib/slides";
 import { COMMON_RULES, VISUAL_GUIDE, readVisualJson, sampleFor } from "@/lib/visualguide";
+import { promptChoAiNgoai } from "@/lib/prompt";
 import { khaoSatHamSo } from "@/lib/khaosat";
 import { APP_LABEL } from "@/lib/version";
 import {
@@ -141,6 +143,15 @@ export default function Page() {
   const [form, setForm] = useState<FormState>(INITIAL);
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [documents, setDocuments] = useState<SourceDoc[]>([]);
+  /**
+   * PDF ẢNH QUÉT đang chờ thầy quyết định có đọc bằng OCR hay không (V12.3).
+   * Giữ nguyên đối tượng File để lát nữa còn vẽ từng trang ra ảnh mà đọc.
+   */
+  const [choOcr, setChoOcr] = useState<{ file: File; soTrang: number }[]>([]);
+  const [ocrTu, setOcrTu] = useState(1);
+  const [ocrDen, setOcrDen] = useState(20);
+  const [ocrTienDo, setOcrTienDo] = useState<TienDoOCR | null>(null);
+  const ocrDung = useRef<AbortController | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [useServerKey, setUseServerKey] = useState(false);
   const [provider, setProvider] = useState<Provider>("gemini");
@@ -334,17 +345,99 @@ export default function Page() {
     setBusy(true);
     const added: SourceDoc[] = [];
     const failed: string[] = [];
+    /* PDF ảnh quét KHÔNG còn bị tính là "không đọc được": nó sang một danh sách
+       riêng, kèm nút mời thầy đọc bằng OCR ngay tại chỗ. */
+    const quet: { file: File; soTrang: number }[] = [];
     for (const file of Array.from(list).slice(0, 8 - documents.length)) {
       try { added.push(await readSource(file)); }
-      catch (e) { failed.push(e instanceof Error ? e.message : file.name); }
+      catch (e) {
+        if (e instanceof LoiCanOCR) quet.push({ file: e.file, soTrang: e.soTrang });
+        else failed.push(e instanceof Error ? e.message : file.name);
+      }
     }
     setDocuments((x) => [...x, ...added]);
-    setMessage(
-      failed.length
-        ? `Đã đọc ${added.length} tài liệu. Không đọc được: ${failed.join("; ")}`
-        : `Đã đọc ${added.length} tài liệu (${added.reduce((n, d) => n + d.text.length, 0).toLocaleString("vi-VN")} ký tự).`,
-    );
+    setChoOcr((x) => [...x, ...quet]);
+    if (quet.length) setOcrDen(Math.min(20, quet[0].soTrang || 20));
+    const phan: string[] = [];
+    if (added.length)
+      phan.push(`Đã đọc ${added.length} tài liệu (${added.reduce((n, d) => n + d.text.length, 0).toLocaleString("vi-VN")} ký tự).`);
+    if (quet.length)
+      phan.push(`${quet.length} tệp là PDF ảnh quét — xem khung bên dưới để đọc bằng OCR.`);
+    if (failed.length) phan.push(`Không đọc được: ${failed.join("; ")}`);
+    setMessage(phan.join(" ") || "Không có tệp nào được đọc.");
     setBusy(false);
+  }
+
+  /**
+   * ĐỌC MỘT PDF ẢNH QUÉT BẰNG OCR (V12.3).
+   *
+   * Chạy hẳn trong trình duyệt của thầy: sách không rời khỏi máy. Chậm, nên có
+   * thanh tiến độ và nút Dừng — một quyển SGK 250 trang mà không dừng được thì
+   * bấm nhầm là ngồi chờ mười lăm phút.
+   */
+  async function chayOcr(muc: { file: File; soTrang: number }) {
+    const tu = Math.max(1, Math.min(ocrTu, muc.soTrang || ocrTu));
+    const den = Math.max(tu, Math.min(ocrDen, muc.soTrang || ocrDen, tu + TOI_DA_TRANG - 1));
+    const dieuKhien = new AbortController();
+    ocrDung.current = dieuKhien;
+    setOcrTienDo({ trang: 0, tong: den - tu + 1, viec: "Đang chuẩn bị…", phan: 0 });
+    try {
+      const trangDoc = await ocrPdf(muc.file, {
+        tuTrang: tu, denTrang: den, signal: dieuKhien.signal,
+        onProgress: (t) => setOcrTienDo(t),
+      });
+      if (!coChuKhong(trangDoc)) {
+        setMessage(
+          `Đọc xong nhưng không thấy chữ nào trong trang ${tu}–${den} của ${muc.file.name}. ` +
+            "Thường là do trang ảnh quá mờ, hoặc đoạn đó chỉ có hình. Thử chọn khoảng trang khác.",
+        );
+        return;
+      }
+      const doc = docTuOCR(muc.file, ghepTrang(trangDoc), tu, den);
+      setDocuments((x) => [...x, doc]);
+      setChoOcr((x) => x.filter((m) => m.file !== muc.file));
+      setMessage(
+        `Đã đọc ${trangDoc.length} trang của ${muc.file.name} bằng OCR ` +
+          `(${doc.text.length.toLocaleString("vi-VN")} ký tự). Nhớ rằng công thức Toán trong đó có thể sai.`,
+      );
+    } catch (e) {
+      setMessage(
+        dieuKhien.signal.aborted
+          ? "Đã dừng đọc OCR. Phần đã đọc không được giữ lại."
+          : `Không đọc được bằng OCR: ${e instanceof Error ? e.message : "lỗi không xác định"}`,
+      );
+    } finally {
+      ocrDung.current = null;
+      setOcrTienDo(null);
+    }
+  }
+
+  /**
+   * CHÉP PROMPT CHO AI NGOÀI (V12.4).
+   *
+   * Thầy nạp sách vào Claude / Gemini / ChatGPT / NotebookLM, lấy về tệp JSON,
+   * rồi phần mềm này chỉ việc dựng PowerPoint. Prompt sinh ra từ lib/prompt.ts —
+   * đúng bộ quy tắc phần mềm gửi cho AI của chính nó — nên không thể lệch với
+   * lược đồ dữ liệu. Có nút tải về vì NotebookLM và vài trình duyệt trên máy
+   * trường không cho chép vào bộ nhớ tạm.
+   */
+  async function chepPrompt() {
+    const chu = promptChoAiNgoai();
+    try {
+      await navigator.clipboard.writeText(chu);
+      setMessage("Đã chép prompt. Dán vào Claude / Gemini / ChatGPT / NotebookLM, đính kèm sách rồi gửi.");
+    } catch {
+      taiPrompt();
+      setMessage("Trình duyệt không cho chép tự động nên tôi tải prompt về thành tệp .txt — mở ra rồi chép tay.");
+    }
+  }
+
+  function taiPrompt() {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([promptChoAiNgoai()], { type: "text/plain;charset=utf-8" }));
+    a.download = "prompt-soan-json-cho-AI.txt";
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   async function importJson(list: FileList | null) {
@@ -802,12 +895,91 @@ export default function Page() {
               </div>
             )}
 
+            {/* PDF ẢNH QUÉT — V12.3.
+                Sách giáo khoa scan không có sẵn chữ để lấy. Trước đây phần mềm
+                chỉ báo "hãy dùng OCR trước" rồi bỏ đấy; nay mời thầy đọc ngay
+                tại chỗ. Toàn bộ chạy trong trình duyệt, sách không rời máy. */}
+            {choOcr.map((muc, i) => (
+              <div className="ocr-box" key={`${muc.file.name}-${i}`}>
+                <strong>📄 {muc.file.name} là PDF ảnh quét</strong>
+                <p>
+                  Tệp này là ảnh chụp/scan nên không có sẵn chữ để lấy. Phần mềm đọc được bằng{" "}
+                  <b>OCR</b> — nhận dạng chữ trên ảnh — <b>ngay trong máy thầy</b>, không gửi sách đi đâu cả.
+                </p>
+                <p className="ocr-chu-y">
+                  Hai điều cần biết trước: đọc <b>chậm</b> — một trang sách kín chữ mất khoảng{" "}
+                  <b>5–10 giây</b>, tức 20 trang chừng 2–3 phút; và <b>công thức Toán sẽ đọc sai</b> —
+                  phân số, căn, chỉ số trên dưới đều hỏng. Phần lời văn (định nghĩa, đề bài, chú ý) thì
+                  đọc tốt, đủ để AI biết bài học nói về cái gì.
+                </p>
+                {ocrTienDo ? (
+                  <div className="ocr-tiendo">
+                    <div className="ocr-thanh"><i style={{ width: `${Math.round(ocrTienDo.phan * 100)}%` }} /></div>
+                    <span>{ocrTienDo.viec}</span>
+                    <button type="button" className="ocr-dung" onClick={() => ocrDung.current?.abort()}>
+                      ✕ Dừng
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="ocr-trang">
+                      <label>
+                        Đọc từ trang
+                        <input type="number" min={1} max={muc.soTrang || undefined} value={ocrTu}
+                               onChange={(e) => setOcrTu(Math.max(1, Number(e.target.value) || 1))} />
+                      </label>
+                      <label>
+                        đến trang
+                        <input type="number" min={1} max={muc.soTrang || undefined} value={ocrDen}
+                               onChange={(e) => setOcrDen(Math.max(1, Number(e.target.value) || 1))} />
+                      </label>
+                      <span className="ocr-ghi">
+                        {muc.soTrang ? `Tệp có ${muc.soTrang} trang. ` : ""}
+                        Mỗi lần đọc tối đa {TOI_DA_TRANG} trang — chọn đúng bài cần soạn thì nhanh hơn nhiều.
+                      </span>
+                    </div>
+                    <div className="ocr-nut">
+                      <button type="button" className="ocr-chay" onClick={() => chayOcr(muc)} disabled={busy}>
+                        🔍 Đọc bằng OCR
+                      </button>
+                      <button type="button" className="ocr-bo"
+                              onClick={() => setChoOcr((x) => x.filter((m) => m.file !== muc.file))}>
+                        Bỏ qua tệp này
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+
+
             <h2>2. Mở lại bài giảng đã lưu</h2>
             <label className="upload">
               <input type="file" accept=".json" onChange={(e) => importJson(e.target.files)} />
               <span>⇧ Mở tệp JSON</span>
-              <small>Tệp do LessonStudio xuất ra</small>
+              <small>Tệp do LessonStudio xuất ra, hoặc tệp do AI khác soạn theo prompt bên dưới</small>
             </label>
+
+            {/* NHỜ AI KHÁC SOẠN JSON — V12.4.
+                Cách này không cần khoá API và không cần chờ OCR: AI nào đọc
+                được PDF (NotebookLM đọc tốt cả bản scan) đều soạn được tệp
+                JSON, phần mềm chỉ việc dựng PowerPoint. */}
+            <div className="prompt-box">
+              <strong>💡 Chưa có khoá AI? Nhờ Claude, Gemini, ChatGPT hay NotebookLM soạn hộ</strong>
+              <p>
+                Chép prompt bên dưới, dán vào AI đang dùng, <b>đính kèm sách giáo khoa</b> rồi gửi.
+                AI trả về một đoạn JSON — lưu thành tệp <code>.json</code> (Notepad, chọn UTF-8) rồi
+                mở bằng nút <b>⇧ Mở tệp JSON</b> ở trên. Phần mềm sẽ tự kiểm tra lại toàn bộ số liệu Toán.
+              </p>
+              <p className="prompt-ghi">
+                NotebookLM đọc được cả PDF ảnh quét nên khỏi cần chạy OCR. Nếu bài dài, AI in chưa hết
+                thì gõ <b>tiếp</b> để nó in phần còn lại, rồi ghép hai đoạn lại.
+              </p>
+              <div className="prompt-nut">
+                <button type="button" className="prompt-chep" onClick={chepPrompt}>📋 Chép prompt</button>
+                <button type="button" className="prompt-tai" onClick={taiPrompt}>⇩ Tải về tệp .txt</button>
+              </div>
+            </div>
 
             <h2>3. Hoặc: khảo sát một hàm số ngay, không cần AI</h2>
             <div className="khaosat-box">
