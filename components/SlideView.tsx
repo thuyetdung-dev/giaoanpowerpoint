@@ -64,25 +64,12 @@ function Chrome({ t, title, phase, number }: { t: Theme; title: string; phase?: 
         className="sl-title"
         style={{
           left: px(LAYOUT.title.x), top: px(LAYOUT.title.y), height: px(LAYOUT.title.h),
-          width: px(meta ? LAYOUT.title.wNarrow : LAYOUT.title.wWide),
+          width: px(LAYOUT.title.wWide),
           fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif`, fontSize: pt(LAYOUT.title.pt), color: `#${t.ink}`,
         }}
       >
         <MixedMath value={title} />
       </div>
-      {meta && (
-        <div
-          className="sl-badge"
-          style={{
-            left: px(LAYOUT.badge.x), top: px(LAYOUT.badge.y),
-            width: px(LAYOUT.badge.w), height: px(LAYOUT.badge.h),
-            background: `#${meta.color}`, fontSize: pt(LAYOUT.badge.pt),
-            fontFamily: `"${t.bodyFont}", sans-serif`,
-          }}
-        >
-          {meta.label.toUpperCase()}
-        </div>
-      )}
       <div
         className="sl-pageno"
         style={{
@@ -100,7 +87,7 @@ function Chrome({ t, title, phase, number }: { t: Theme; title: string; phase?: 
   );
 }
 
-function Footer({ t, lesson }: { t: Theme; lesson: Lesson }) {
+function Footer({ t, lesson, sectionNo }: { t: Theme; lesson: Lesson; sectionNo?: number }) {
   return (
     <>
       <div
@@ -108,7 +95,7 @@ function Footer({ t, lesson }: { t: Theme; lesson: Lesson }) {
         style={{ left: px(0.62), top: px(LAYOUT.footer.y), fontSize: pt(LAYOUT.footer.pt), color: `#${t.muted}`, fontFamily: `"${t.bodyFont}", sans-serif` }}
       >
         {lesson.subject || "Toán"} · Lớp {lesson.grade || "THPT"}
-        {lesson.book ? ` · ${lesson.book}` : ""}
+        {lesson.book ? ` · ${lesson.book}` : ""}{sectionNo !== undefined ? ` · Mục ${String(sectionNo + 1).padStart(2, "0")}` : ""}
       </div>
       <div
         className="sl-footer sl-right"
@@ -228,7 +215,7 @@ export function SlideBoard({
   }
 
   /* ----- slide nội dung ----- */
-  const { section, part, bullets, bodyPt, bandH, visual, showNumber } = spec;
+  const { section, part, bullets, bodyPt, bandH, visual } = spec;
   const heading = section.heading + (part ? " (tiếp)" : "");
   const band = textBandBox(bandH);
   const vbox = visual ? visualBox(bandH) : null;
@@ -237,7 +224,7 @@ export function SlideBoard({
   return (
     <div className="sl-body" style={{ background: `#${t.bg}` }}>
       <Chrome t={t} title={heading} phase={section.phase} number={number} />
-      <Footer t={t} lesson={lesson} />
+      <Footer t={t} lesson={lesson} sectionNo={spec.sectionIndex} />
 
       {/* Khối chữ: trải hết bề ngang. Không có hình thì chiếm trọn vùng nội
           dung, có hình thì thành một dải ở trên, cao đúng bằng số dòng cần. */}
@@ -251,25 +238,11 @@ export function SlideBoard({
               background: `#${t.surface}`, borderColor: `#${t.line}`,
             }}
           />
-          {showNumber && (
-            <div
-              className="sl-abs"
-              style={{
-                left: px(LAYOUT.textOnly.number.x), top: px(LAYOUT.textOnly.number.y),
-                fontSize: pt(LAYOUT.textOnly.number.pt), color: `#${t.accent}`, fontWeight: 700,
-                fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif`,
-              }}
-            >
-              {String(spec.sectionIndex + 1).padStart(2, "0")}
-            </div>
-          )}
           <Bullets
             t={t}
             items={bullets}
             size={bodyPt}
-            box={showNumber
-              ? LAYOUT.textOnly.bullets
-              : { x: LAYOUT.textOnly.box.x + 0.33, y: LAYOUT.textOnly.bullets.y, w: LAYOUT.textOnly.box.w - 0.66, h: LAYOUT.textOnly.bullets.h }}
+            box={{ x: LAYOUT.textOnly.box.x + 0.33, y: LAYOUT.textOnly.bullets.y, w: LAYOUT.textOnly.box.w - 0.66, h: LAYOUT.textOnly.bullets.h }}
           />
         </>
       )}

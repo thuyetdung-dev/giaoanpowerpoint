@@ -306,16 +306,6 @@ function addChrome(slide: any, t: Theme, index: number, phase?: string) {
     fill: { color: meta?.color || t.accent }, line: { transparency: 100 },
   });
   // Tiêu đề do addTitle() vẽ riêng, vì nó có thể phải dựng bằng KaTeX.
-  if (meta) {
-    slide.addShape("roundRect", {
-      x: L.badge.x, y: L.badge.y, w: L.badge.w, h: L.badge.h, rectRadius: 0.24,
-      fill: { color: meta.color }, line: { transparency: 100 },
-    });
-    slide.addText(meta.label.toUpperCase(), {
-      x: L.badge.x, y: L.badge.y, w: L.badge.w, h: L.badge.h, fontFace: t.bodyFont, fontSize: L.badge.pt, bold: true,
-      color: "FFFFFF", align: "center", valign: "mid", margin: 0, charSpacing: 0.6,
-    });
-  }
   slide.addText(String(index).padStart(2, "0"), {
     x: L.pageNo.x, y: L.pageNo.y, w: L.pageNo.w, h: L.pageNo.h, fontFace: t.bodyFont, fontSize: L.pageNo.pt, bold: true,
     color: t.muted, align: "right", margin: 0,
@@ -323,8 +313,8 @@ function addChrome(slide: any, t: Theme, index: number, phase?: string) {
   slide.addShape("line", { x: L.divider.x, y: L.divider.y, w: L.divider.w, h: 0, line: { color: t.line, width: 1 } });
 }
 
-function addFooter(slide: any, t: Theme, lesson: Lesson) {
-  slide.addText(`${lesson.subject || "Toán"} · Lớp ${lesson.grade || "THPT"}${lesson.book ? " · " + lesson.book : ""}`, {
+function addFooter(slide: any, t: Theme, lesson: Lesson, sectionNo?: number) {
+  slide.addText(`${lesson.subject || "Toán"} · Lớp ${lesson.grade || "THPT"}${lesson.book ? " · " + lesson.book : ""}${sectionNo !== undefined ? ` · Mục ${String(sectionNo + 1).padStart(2, "0")}` : ""}`, {
     x: 0.62, y: LAYOUT.footer.y, w: 7, h: LAYOUT.footer.h, fontFace: t.bodyFont, fontSize: LAYOUT.footer.pt, color: t.muted, margin: 0,
   });
   slide.addText(APP_LABEL, {
@@ -514,8 +504,8 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
     const slide = pptx.addSlide();
     const heading = section.heading + (spec.part ? " (tiếp)" : "");
     addChrome(slide, t, slideNo++, section.phase);
-    await addTitle(slide, t, heading, !!(section.phase && PHASE_META[section.phase]), stage);
-    addFooter(slide, t, lesson);
+    await addTitle(slide, t, heading, false, stage);
+    addFooter(slide, t, lesson, spec.sectionIndex);
 
     const bullets = spec.bullets.map(toSlideText);
 
@@ -525,15 +515,7 @@ export async function exportPptx(root: HTMLElement, lesson: Lesson, meta?: Meta)
         x: LAYOUT.textOnly.box.x, y: LAYOUT.textOnly.box.y, w: LAYOUT.textOnly.box.w, h: LAYOUT.textOnly.box.h,
         rectRadius: 0.06, fill: { color: t.surface }, line: { color: t.line, width: 1 },
       });
-      if (spec.showNumber) {
-        slide.addText(String(spec.sectionIndex + 1).padStart(2, "0"), {
-          x: LAYOUT.textOnly.number.x, y: LAYOUT.textOnly.number.y, w: LAYOUT.textOnly.number.w, h: LAYOUT.textOnly.number.h,
-          fontFace: t.headFont, fontSize: LAYOUT.textOnly.number.pt, bold: true, color: t.accent, margin: 0,
-        });
-      }
-      const box = spec.showNumber
-        ? LAYOUT.textOnly.bullets
-        : { x: LAYOUT.textOnly.box.x + 0.33, y: LAYOUT.textOnly.bullets.y, w: LAYOUT.textOnly.box.w - 0.66, h: LAYOUT.textOnly.bullets.h };
+      const box = { x: LAYOUT.textOnly.box.x + 0.33, y: LAYOUT.textOnly.bullets.y, w: LAYOUT.textOnly.box.w - 0.66, h: LAYOUT.textOnly.bullets.h };
       await addTextBlock(slide, t, spec.bullets, box, spec.bodyPt, spec.richMath, stage, t.surface);
     } else {
       // Slide có hình: chữ ở trên (nếu có), hình trải hết bề ngang ở dưới.

@@ -287,7 +287,7 @@ export default function Page() {
     return slideIdx;
   }, [deck, slideIdx, selected]);
   const spec = deck[deckIndex];
-  /** Slide bìa / phân cách / kết do phần mềm tự dựng — không có nội dung để sửa. */
+  /** Slide bìa / phân cách / kết được dựng từ dữ liệu chung và vẫn sửa được. */
   const autoSlide = !!spec && spec.kind !== "content";
 
   /** Chọn theo MỤC: khung xem về slide đầu của mục đó. */
@@ -1165,7 +1165,7 @@ export default function Page() {
                       <li key={o.index}>
                         <div>
                           <b>Slide {o.index + 1} · {o.label}</b>
-                          {o.auto && <small>Phần mềm tự dựng, không có nội dung để sửa</small>}
+                          {o.auto && <small>Dữ liệu chung của bài giảng · có thể sửa</small>}
                         </div>
                         <button onClick={() => { pickSlide(o.index); setDetail(null); }}>Xem</button>
                       </li>
@@ -1255,7 +1255,6 @@ export default function Page() {
                       const meta = o.phase ? PHASE_META[o.phase] : undefined;
                       const cls = [
                         deckIndex === o.index ? "selected" : "",
-                        o.auto ? "auto" : "",
                         o.part ? "cont" : "",
                       ].filter(Boolean).join(" ");
                       return (
@@ -1265,12 +1264,12 @@ export default function Page() {
                             {o.label}
                             <em style={{ color: meta ? `#${meta.color}` : undefined }}>
                               {o.auto
-                                ? (o.kind === "divider" && meta ? `${meta.icon} ${meta.label}` : "Phần mềm tự dựng")
+                                ? (o.kind === "divider" && meta ? `${meta.icon} ${meta.label}` : "Dữ liệu chung")
                                 : `Mục ${o.sectionIndex! + 1}${meta ? ` · ${meta.icon} ${meta.label}` : ""}`}
                             </em>
                           </span>
                           {o.auto
-                            ? <i className="auto-tag">tự dựng</i>
+                            ? <i className="pass">Sửa được</i>
                             : <i className={count ? "issue" : "pass"}>{count ? `${count} lỗi` : "Đạt"}</i>}
                         </button>
                       );
@@ -1297,8 +1296,7 @@ export default function Page() {
                       <button className="danger" onClick={removeSection} disabled={autoSlide}>🗑 XOÁ MỤC</button>
                       {/* Slide bìa / phân cách / kết không có nội dung để sửa — nút phải
                           nói rõ lý do, đừng để giáo viên bấm rồi không thấy gì xảy ra. */}
-                      <button className="edit" onClick={() => setEditing(true)} disabled={autoSlide}
-                              title={autoSlide ? "Slide này do phần mềm tự dựng từ thông tin bài dạy" : "Mở ô sửa toàn màn hình"}>
+                      <button className="edit" onClick={() => setEditing(true)} title="Mở ô sửa toàn màn hình">
                         ✎ SỬA SLIDE
                       </button>
                       <button className="primary" onClick={() => setPresenting(deckIndex)}>⛶ TRÌNH CHIẾU</button>
@@ -1314,11 +1312,7 @@ export default function Page() {
                     />
                     <p className="slide-hint">
                       {autoSlide ? (
-                        <>
-                          Slide này phần mềm tự dựng từ <b>Thông tin bài dạy</b> ở cột bên trái (trang bìa, trang
-                          &quot;Yêu cầu cần đạt&quot;, trang phân cách giữa các pha, trang kết) — không có nội dung để sửa.
-                          Chọn một slide nội dung trong danh sách để bật nút <b>SỬA SLIDE</b>.
-                        </>
+                        <>Bấm <b>SỬA SLIDE</b> để thay đổi dữ liệu chung tạo nên trang này.</>
                       ) : (
                         <>
                           Đây là hình ảnh thật của slide khi trình chiếu — chữ tràn hay hình bị nhỏ đều thấy được ngay tại đây.
@@ -1359,6 +1353,68 @@ export default function Page() {
                 )}
               </aside>
             </div>
+
+            {editing && spec && autoSlide && (
+              <div className="edit-full" role="dialog" aria-label="Sửa slide dữ liệu chung">
+                <header>
+                  <b>Sửa slide {deckIndex + 1}/{deck.length} · {outline[deckIndex]?.label}</b>
+                  <span className="ef-hint">Thay đổi được cập nhật ngay trên bản xem trước và PowerPoint.</span>
+                  <button className="done" onClick={() => setEditing(false)}>✓ XONG</button>
+                </header>
+                <div className="ef-body auto-slide-editor">
+                  <div className="ef-left">
+                    {spec.kind === "cover" && (
+                      <>
+                        <label>Tên bài giảng
+                          <input value={lesson.title} onChange={(e) => applyLesson({ ...lesson, title: e.target.value })} />
+                        </label>
+                        <label>Tên giáo viên
+                          <input value={form.teacher} onChange={set("teacher")} />
+                        </label>
+                        <label>Trường
+                          <input value={form.school} onChange={set("school")} />
+                        </label>
+                        <label>Khối lớp
+                          <input value={lesson.grade ?? ""} onChange={(e) => applyLesson({ ...lesson, grade: e.target.value })} />
+                        </label>
+                        <label>Bộ sách
+                          <input value={lesson.book ?? ""} onChange={(e) => applyLesson({ ...lesson, book: e.target.value })} />
+                        </label>
+                      </>
+                    )}
+                    {spec.kind === "objectives" && (
+                      <label className="grow">Yêu cầu cần đạt (mỗi yêu cầu một dòng)
+                        <textarea value={(lesson.objectives ?? []).join("\n")}
+                          onChange={(e) => applyLesson({ ...lesson, objectives: e.target.value.split(/\n+/).map((x) => x.trim()).filter(Boolean) })} />
+                      </label>
+                    )}
+                    {spec.kind === "divider" && (
+                      <>
+                        <label>Pha hoạt động của trang phân cách
+                          <select value={spec.phase} onChange={(e) => {
+                            const phase = e.target.value as Section["phase"];
+                            applyLesson({ ...lesson, sections: lesson.sections.map((s) => s.phase === spec.phase ? { ...s, phase } : s) });
+                          }}>
+                            {PHASES.map(([key, m]) => <option key={key} value={key}>{m.label}</option>)}
+                          </select>
+                        </label>
+                        <p className="slide-hint">Đổi pha tại đây sẽ cập nhật tất cả mục đang thuộc cùng pha và tên trang phân cách tương ứng.</p>
+                      </>
+                    )}
+                    {spec.kind === "end" && (
+                      <label className="grow">Từ khóa cuối bài (mỗi từ khóa một dòng)
+                        <textarea value={(lesson.keywords ?? []).join("\n")}
+                          onChange={(e) => applyLesson({ ...lesson, keywords: e.target.value.split(/\n+/).map((x) => x.trim()).filter(Boolean) })} />
+                      </label>
+                    )}
+                  </div>
+                  <div className="ef-right">
+                    <SlideFrame spec={spec} lesson={lesson} number={deckIndex + 1} meta={deckMeta} theme={theme} />
+                    <p className="slide-hint">Đây là bản xem trước trực tiếp của slide đang sửa.</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {editing && current && !autoSlide && (
               /**
