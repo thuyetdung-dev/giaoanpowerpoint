@@ -701,6 +701,15 @@ export default function Page() {
     applyLesson(next);
   }
 
+  function updateVisualFontSize(index: number, value: number) {
+    if (!lesson) return;
+    const next = structuredClone(lesson);
+    const visual = next.sections[selected].visuals?.[index];
+    if (!visual) return;
+    visual.fontSize = Math.max(20, Math.min(48, value || 32));
+    applyLesson(next);
+  }
+
   function repair() {
     if (!lesson) return;
     const { lesson: fixed, changes, unresolved } = repairLesson(lesson);
@@ -1437,6 +1446,16 @@ export default function Page() {
                     <label>Tiêu đề slide
                       <input value={current.heading} onChange={(e) => updateSection({ heading: e.target.value })} />
                     </label>
+                    <div className="font-size-controls">
+                      <label>Cỡ tiêu đề (pt)
+                        <input type="number" min="20" max="44" value={current.fontSize?.title ?? 32}
+                          onChange={(e) => updateSection({ fontSize: { ...current.fontSize, title: Number(e.target.value) || 32 } })} />
+                      </label>
+                      <label>Cỡ nội dung (pt)
+                        <input type="number" min="20" max="48" value={current.fontSize?.body ?? 32}
+                          onChange={(e) => updateSection({ fontSize: { ...current.fontSize, body: Number(e.target.value) || 32 } })} />
+                      </label>
+                    </div>
                     <label className="grow">Nội dung (mỗi ý một dòng, công thức đặt trong $...$)
                       <textarea value={current.content} onChange={(e) => updateSection({ content: e.target.value })} spellCheck={false} />
                     </label>
@@ -1483,6 +1502,10 @@ export default function Page() {
                       {current.visuals?.length ? current.visuals.map((v, j) => (
                         <div className={`visual-row ${visualDraft?.index === j ? "on" : ""}`} key={j}>
                           <span>{j + 1}. {VISUAL_LABEL[v.type] || v.type}</span>
+                          <label className="visual-size">Cỡ chữ
+                            <input type="number" min="20" max="48" value={v.fontSize ?? 32}
+                              onChange={(e) => updateVisualFontSize(j, Number(e.target.value))} />
+                          </label>
                           <button onClick={() => setVisualDraft({ index: j, text: JSON.stringify(v, null, 2) })}>✎ SỬA DỮ LIỆU</button>
                           <button className="danger" onClick={() => removeVisual(j)}>🗑 XOÁ HÌNH</button>
                         </div>
