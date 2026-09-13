@@ -1,4 +1,4 @@
-# LessonStudio V12 — Next.js/Vercel
+# LessonStudio V12.2 — Next.js/Vercel
 
 Bản viết lại từ LessonStudio V9.0 Streamlit, ưu tiên hiển thị Toán học ổn định.
 

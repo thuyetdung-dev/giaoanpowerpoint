@@ -9,6 +9,7 @@
  */
 
 import type { Lesson } from "./types";
+import { APP_LABEL } from "./version";
 
 export const VISUAL_SPEC = `
 Danh mục hình được phép (KHÔNG tạo ảnh, chỉ tạo dữ liệu JSON — ứng dụng tự vẽ):
@@ -41,7 +42,7 @@ Quy tắc dữ liệu bắt buộc:
 - Mọi giá trị số phải TỰ NHẤT QUÁN: điểm cực trị phải nằm trên đồ thị, tổng xác suất mỗi tầng bằng 1, min ≤ Q1 ≤ Q2 ≤ Q3 ≤ max.
 `.trim();
 
-export const SYSTEM_PROMPT = `Bạn là engine LessonStudio V11, chuyên tạo NỘI DUNG SLIDE POWERPOINT cho môn Toán THPT Việt Nam theo Chương trình GDPT 2018.
+export const SYSTEM_PROMPT = `Bạn là engine ${APP_LABEL}, chuyên tạo NỘI DUNG SLIDE POWERPOINT cho môn Toán THPT Việt Nam theo Chương trình GDPT 2018.
 
 TUYỆT ĐỐI KHÔNG viết kế hoạch bài dạy (giáo án), không viết mục "I. Mục tiêu / II. Thiết bị / III. Tiến trình", không viết rubric. Chỉ tạo nội dung để CHIẾU LÊN MÀN HÌNH.
 

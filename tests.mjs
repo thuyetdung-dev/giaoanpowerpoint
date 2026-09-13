@@ -10,9 +10,12 @@ import { VISUAL_LABEL } from "./_build/lib/themes.js";
 import { soVN, ticksFit, ticksFitDoc } from "./_build/lib/plot.js";
 import { daoHam } from "./_build/lib/deriv.js";
 import { khaoSatHamSo } from "./_build/lib/khaosat.js";
+import { APP_LABEL, APP_VERSION } from "./_build/lib/version.js";
 
 let pass=0, fail=0;
 const eq=(name,a,b,tol=1e-9)=>{const ok=(typeof a==="number"&&typeof b==="number")?Math.abs(a-b)<=tol:JSON.stringify(a)===JSON.stringify(b);ok?pass++:(fail++,console.log("FAIL",name,"got",JSON.stringify(a),"want",JSON.stringify(b)));};
+
+eq("nhãn phiên bản V12.2", [APP_VERSION, APP_LABEL], ["12.2", "LessonStudio V12.2"]);
 
 // --- Lỗi V10: -x^2 gây SyntaxError vì "-x**2" không hợp lệ trong JS
 eq("-x^2 tại x=3", compileExpression("-x^2").eval(3), -9);
