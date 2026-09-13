@@ -210,7 +210,7 @@ async function richTextPng(
   const render = (raw: string) =>
     splitMathSegments(raw)
       .map((seg) => {
-        if (!seg.math) return esc(seg.value);
+        if (!seg.math) return esc(seg.value.includes("\\") ? mixedLatexToUnicode(seg.value).text : seg.value);
         try {
           /**
            * \displaystyle: KaTeX mặc định thu nhỏ phân số khi nằm giữa dòng chữ

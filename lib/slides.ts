@@ -446,6 +446,19 @@ export type DeckMeta = { teacher?: string; school?: string; includeObjectives?: 
 /** Giữ lại cho mã cũ: mỗi slide giờ chỉ còn tối đa MỘT hình. */
 export const VISUALS_PER_SLIDE = 1;
 
+/** Loại hình giữ chỗ do AI sinh nhưng không mang kiến thức thật. */
+export function isMeaningfulVisual(visual: Visual): boolean {
+  if (visual.type !== "formula") return true;
+  const v = visual as any;
+  const latex = String(v.latex ?? "").trim();
+  if (!latex) return false;
+  const onlyArrow = latex
+    .replace(/\s+/g, "")
+    .replace(/\{\}/g, "")
+    .match(/^\\(?:longrightarrow|rightarrow|Rightarrow|to|mapsto)$/);
+  return !onlyArrow;
+}
+
 /**
  * Sắp xếp một mục thành các slide.
  *
@@ -458,7 +471,9 @@ export const VISUALS_PER_SLIDE = 1;
  */
 export function planSection(section: Section, sectionIndex: number): SlideSpec[] {
   const bullets = toBullets(section.content);
-  const visuals = (section.visuals || []).map((visual, index) => ({ visual, index }));
+  const visuals = (section.visuals || [])
+    .map((visual, index) => ({ visual, index }))
+    .filter(({ visual }) => isMeaningfulVisual(visual));
 
   const textBox = LAYOUT.textOnly.bullets;
   const customBodyPt = section.fontSize?.body;
