@@ -8,9 +8,10 @@ import "./reference.css";
 import "./v9-layout.css";
 import "./v11.css";
 import "./slide.css";
+import { APP_LABEL } from "@/lib/version";
 
 export const metadata: Metadata = {
-  title: "Trợ lý soạn PowerPoint Toán THPT — LessonStudio V11",
+  title: `Trợ lý soạn PowerPoint Toán THPT — ${APP_LABEL}`,
   description:
     "Soạn bài giảng PowerPoint môn Toán THPT theo Chương trình GDPT 2018: bảng biến thiên, bảng xét dấu, đồ thị, thống kê, xác suất, hình không gian, Oxyz và slide tương tác.",
 };
