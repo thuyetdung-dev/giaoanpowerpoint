@@ -4,7 +4,7 @@ import { computeLevels, tenDaoHam } from "./_build/lib/bbt.js";
 import * as Lib from "./_build/lib/library.js";
 import { laThuHepMien, solveVariationTable, vietSo } from "./_build/lib/bbtsolve.js";
 import { auditLesson, repairLesson } from "./_build/lib/audit.js";
-import { buildDeck, isMeaningfulVisual, outlineDeck } from "./_build/lib/slides.js";
+import { buildDeck, formulaComplexity, isMeaningfulVisual, outlineDeck } from "./_build/lib/slides.js";
 import { VISUAL_GUIDE, readVisualJson, sampleFor } from "./_build/lib/visualguide.js";
 import { VISUAL_LABEL } from "./_build/lib/themes.js";
 import { gocChuan, gocRadian, soVN, ticksFit, ticksFitDoc } from "./_build/lib/plot.js";
@@ -60,6 +60,14 @@ eq("công thức chỉ có mũi tên là hình giữ chỗ",
    isMeaningfulVisual({ type: "formula", latex: "\\longrightarrow" }), false);
 eq("công thức thật vẫn được giữ",
    isMeaningfulVisual({ type: "formula", latex: "x^2+1=0" }), true);
+eq("đo độ phức tạp công thức nhiều tầng",
+   formulaComplexity("\\frac{\\sqrt{x}}{\\int_0^1 t\\,dt}") >= 3, true);
+eq("mục chỉ có hình giữ chỗ không sinh slide trắng",
+   buildDeck({ title:"T", sections:[{ heading:"H", content:"", visuals:[{ type:"formula", latex:"\\rightarrow" }] }] }, { includeObjectives:false })
+     .filter((s) => s.kind === "content").length, 0);
+eq("kiểm định bắt mục trống sau khi bỏ giữ chỗ",
+   auditLesson({ title:"T", sections:[{ heading:"H", content:"", visuals:[{ type:"formula", latex:"\\rightarrow" }] }] })
+     .some((x) => x.code === "SECTION_EMPTY"), true);
 eq("văn bản trộn công thức", mixedLatexToUnicode("Xét $\\sqrt{x}\\geq 0$ với mọi x.").text, "Xét √x≥0 với mọi x.");
 eq("không tách y= khỏi phân số", splitMathSegments("Hàm số $y =$ $\\frac{ax+b}{cx+d}$.") , [
   { math:false, value:"Hàm số " },

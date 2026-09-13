@@ -315,8 +315,12 @@ export function visualCanvas(v: Visual): { w: number; h: number } {
       return { w: NL_W, h: NL_HEAD + n * NL_ROW_H };
     }
     case "formula":
-      // Khối công thức dựng bằng HTML: một dòng công thức + chú thích.
-      return { w: 900, h: anyV.caption ? 200 : 150 };
+      // Công thức dài/nhiều tầng cần khung cao hơn; V12.8 luôn giả định 150 px
+      // nên ảnh đúng biên nhưng phần KaTeX bên trong vẫn bị cắt.
+      return {
+        w: 1000,
+        h: 125 + formulaComplexity(anyV.latex) * 34 + (anyV.caption ? 72 : 0),
+      };
     case "graph":
       return { w: GRAPH_W, h: GRAPH_H };
     case "data_table": {
@@ -446,6 +450,14 @@ export type DeckMeta = { teacher?: string; school?: string; includeObjectives?: 
 /** Giữ lại cho mã cũ: mỗi slide giờ chỉ còn tối đa MỘT hình. */
 export const VISUALS_PER_SLIDE = 1;
 
+/** Điểm phức tạp dùng chung để dự đoán kích thước công thức trước khi chụp. */
+export function formulaComplexity(latex: unknown): number {
+  const s = String(latex ?? "");
+  const structural = (s.match(/\\(?:d?frac|sqrt|sum|int|lim|begin)(?=[_\s{[]|$)/g) || []).length;
+  const explicitLines = (s.match(/\\\\|\n/g) || []).length;
+  return Math.min(8, structural + explicitLines * 2 + Math.floor(s.length / 72));
+}
+
 /** Loại hình giữ chỗ do AI sinh nhưng không mang kiến thức thật. */
 export function isMeaningfulVisual(visual: Visual): boolean {
   if (visual.type !== "formula") return true;
@@ -480,6 +492,10 @@ export function planSection(section: Section, sectionIndex: number): SlideSpec[]
   const bodyPt = (automatic: number) => customBodyPt
     ? Math.max(20, Math.min(48, customBodyPt))
     : automatic;
+
+  // Sau khi bỏ visual giữ chỗ, mục không còn chữ/hình thì không được phép sinh
+  // một slide “(tiếp)” trắng. Bộ kiểm định vẫn báo để giáo viên bổ sung dữ liệu.
+  if (!bullets.length && !visuals.length) return [];
 
   // --- Trường hợp không có hình -------------------------------------
   if (!visuals.length) {

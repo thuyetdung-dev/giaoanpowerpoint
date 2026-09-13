@@ -21,7 +21,7 @@ import type {
 } from "./types";
 import { compileExpression, numericDerivative, evalAt, detectPoles } from "./mathexpr";
 import { latexToUnicode, mixedLatexToUnicode } from "./latex";
-import { isMeaningfulVisual } from "./slides";
+import { formulaComplexity, isMeaningfulVisual } from "./slides";
 
 export type AuditLevel = "error" | "warning" | "tip" | "ok";
 export type AuditItem = {
@@ -65,6 +65,31 @@ function auditSection(s: Section, index: number, out: AuditItem[]) {
     out.push({ level: "error", code: "HEADING", message: "Slide thiếu tiêu đề.", section: index });
   }
   const plain = mixedLatexToUnicode(s.content || "");
+  const meaningfulVisuals = (s.visuals || []).filter(isMeaningfulVisual);
+  const placeholderLines = (s.content || "").split(/\n+/).map((x) => x.trim()).filter((x) =>
+    /^(?:CÔNG THỨC|BẢNG SỐ LIỆU|HỆ TRỤC Oxyz|HÌNH MINH HỌA|NỘI DUNG)$/i.test(x),
+  );
+  if (placeholderLines.length) {
+    out.push({
+      level: "warning", code: "CONTENT_PLACEHOLDER", section: index,
+      message: `Còn nội dung giữ chỗ: ${placeholderLines.join(", ")}.`,
+      fix: "Bổ sung dữ liệu thật hoặc xóa dòng giữ chỗ trước khi xuất PowerPoint.",
+    });
+  }
+  if (!plain.text.trim() && !meaningfulVisuals.length) {
+    out.push({
+      level: "error", code: "SECTION_EMPTY", section: index,
+      message: "Mục này không còn nội dung thật sau khi loại hình giữ chỗ; V12.9 sẽ không sinh slide trắng.",
+      fix: "Nhập nội dung, thêm hình Toán đầy đủ hoặc xóa mục này.",
+    });
+  }
+  if (/khởi động/i.test(s.heading || "") && /\?\s*$/.test(s.content || "") && !meaningfulVisuals.length && !s.notes?.trim()) {
+    out.push({
+      level: "warning", code: "QUESTION_NO_FOLLOWUP", section: index,
+      message: "Câu hỏi khởi động chưa có hình, gợi ý hoặc ghi chú hướng xử lý.",
+      fix: "Thêm lời giải ở mục kế tiếp hoặc ghi chú giáo viên để mạch bài không bị đứt.",
+    });
+  }
   if (plain.text.length < 20 && !(s.visuals?.length)) {
     out.push({ level: "warning", code: "CONTENT_SHORT", message: "Slide gần như trống: không có chữ lẫn hình.", section: index });
   }
@@ -140,6 +165,12 @@ function auditVisual(v: Visual, section: number, visual: number, out: AuditItem[
       const braces = (v.latex.match(/\{/g) || []).length - (v.latex.match(/\}/g) || []).length;
       if (braces !== 0) out.push({ level: "error", code: "FORMULA_BRACE", message: "Công thức lệch dấu ngoặc nhọn { }.", ...at });
       const conv = latexToUnicode(v.latex);
+      if (String(v.latex).length > 150 || formulaComplexity(v.latex) >= 5)
+        out.push({
+          level: "warning", code: "FORMULA_DENSE", ...at,
+          message: "Công thức dài hoặc nhiều tầng; V12.9 đã tăng khung và tự điều chỉnh cỡ nhưng vẫn nên xem trước.",
+          fix: "Tách thành hai công thức theo từng bước nếu bản xem trước còn quá dày.",
+        });
       if (conv.unknownCommands.length)
         out.push({ level: "tip", code: "FORMULA_EXOTIC", message: `Lệnh ít gặp: ${conv.unknownCommands.join(", ")} — vẫn hiển thị đẹp trên web nhưng sẽ là chữ thường khi xuất PPTX.`, ...at });
       break;
@@ -168,6 +199,16 @@ function auditVisual(v: Visual, section: number, visual: number, out: AuditItem[
         out.push({ level: "error", code: "QUIZ_OPTIONS", message: "Câu hỏi trắc nghiệm cần ít nhất 2 phương án.", ...at });
       else if (v.answerIndex < 0 || v.answerIndex >= v.options.length)
         out.push({ level: "error", code: "QUIZ_ANSWER", message: "Chỉ số đáp án đúng nằm ngoài danh sách phương án.", ...at });
+      break;
+    }
+    case "oxyz": {
+      const points = v.points?.length ?? 0;
+      if (points > 5)
+        out.push({
+          level: "warning", code: "OXYZ_LABEL_DENSE", ...at,
+          message: `Hình Oxyz có ${points} điểm; nhãn có thể quá dày dù đã tự tránh va chạm.`,
+          fix: "Chia thành hai hình hoặc chỉ ghi tên điểm, chuyển tọa độ xuống phần chữ.",
+        });
       break;
     }
     case "data_table": {
