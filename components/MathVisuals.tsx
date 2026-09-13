@@ -63,7 +63,7 @@ function MathSvg({ value, x, y, width, height, fontSize, align = "center" }: {
   const justify = align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
   return (
     <foreignObject x={x} y={y} width={width} height={height}>
-      <div xmlns="http://www.w3.org/1999/xhtml" className="svg-math"
+      <div className="svg-math"
            style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: justify,
                     fontSize, color: "#182735", overflow: "visible" }}>
         <MathText value={value} />
