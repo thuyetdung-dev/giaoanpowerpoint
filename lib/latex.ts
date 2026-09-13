@@ -246,7 +246,7 @@ export type MathSegment = { math: boolean; value: string };
  */
 export function splitMathSegments(input: string): MathSegment[] {
   const parts = String(input ?? "").split(/(\$[^$]*\$|\\\([\s\S]*?\\\))/g);
-  return parts
+  const segments = parts
     .filter((p) => p !== "")
     .map((part) => {
       const isMath =
@@ -255,6 +255,33 @@ export function splitMathSegments(input: string): MathSegment[] {
       if (!isMath) return { math: false, value: part };
       return { math: true, value: part.startsWith("$") ? part.slice(1, -1) : part.slice(2, -2) };
     });
+
+  // AI và nội dung dán vào thường tách một công thức thành nhiều cặp dấu,
+  // ví dụ `$y =$ $\\frac{a}{b}$`. Khoảng trắng giữa hai cặp khi ấy trở thành
+  // một điểm ngắt dòng hợp lệ của HTML: `y =` bị treo cuối dòng còn phân số
+  // rơi xuống dòng sau. Gộp các mảnh Toán chỉ cách nhau bởi khoảng trắng để
+  // trình xem trước và ảnh xuất PowerPoint coi chúng là một công thức duy nhất.
+  const merged: MathSegment[] = [];
+  for (let i = 0; i < segments.length; i += 1) {
+    const current = segments[i];
+    const gap = segments[i + 1];
+    const next = segments[i + 2];
+    if (current.math && gap && !gap.math && /^\s*$/.test(gap.value) && next?.math) {
+      merged.push({ math: true, value: `${current.value} ${next.value}` });
+      i += 2;
+      while (
+        merged.length &&
+        segments[i + 1] && !segments[i + 1].math && /^\s*$/.test(segments[i + 1].value) &&
+        segments[i + 2]?.math
+      ) {
+        merged[merged.length - 1].value += ` ${segments[i + 2].value}`;
+        i += 2;
+      }
+    } else {
+      merged.push(current);
+    }
+  }
+  return merged;
 }
 
 /**
