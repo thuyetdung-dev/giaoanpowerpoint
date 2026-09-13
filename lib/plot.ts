@@ -11,6 +11,8 @@
  * bị bỏ lại phía sau.
  */
 
+import { compileExpression } from "./mathexpr";
+
 /**
  * Bước chia "đẹp" cho một khoảng: luôn là 1, 2 hoặc 5 nhân với luỹ thừa của 10.
  * Nhờ vậy dãy vạch chia luôn đọc được (0; 2; 4; 6) chứ không ra 0; 2,857; 5,714.
@@ -146,4 +148,35 @@ export function neVecto(x: number, y: number, ten: string, fs: number, anchor: "
   const w = Math.max(fs * 0.5, beRongChu(ten, fs, 0.5));
   const x0 = anchor === "start" ? x : anchor === "middle" ? x - w / 2 : x - w;
   return { x1: x0, x2: x0 + w, y: y - fs * 0.92 };
+}
+
+/**
+ * ĐỌC MỘT GÓC viết theo kiểu SGK: "\pi/3", "2\pi/3", "-π/2", "1.57".
+ *
+ * LỖI NGHIÊM TRỌNG của V12.0, sửa ở V12.1: bản cũ thay chữ π bằng CHUỖI SỐ
+ * "3.141592653589793" rồi mới đem đi tính. Với "2\pi/3" thì phép thay ấy tạo
+ * ra "23.141592653589793/3" — bộ đọc biểu thức thấy MỘT con số 23,14 chứ không
+ * thấy 2 nhân π, nên góc 2π/3 = 120° bị vẽ thành 81,9°. Cung nghiệm cũng sai
+ * theo: hai đầu cung lệch nhau hơn π nên hình tô đi đường dài, phủ kín gần cả
+ * đường tròn và tràn ra ngoài khung.
+ *
+ * Nay giữ π ở dạng TÊN HẰNG `pi` — bộ đọc biểu thức đã biết hằng này, và biết
+ * nhân ngầm, nên "2pi/3" ra đúng 2π/3.
+ */
+export function gocRadian(s: string): number {
+  const t = String(s ?? "").replace(/\\pi|π/g, "pi").replace(/\s/g, "");
+  if (!t) return 0;
+  const c = compileExpression(t);
+  if (c.ok) {
+    const g = c.eval(0);
+    if (Number.isFinite(g)) return g;
+  }
+  const n = Number(t);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Đưa góc về nửa khoảng [0; 2π) để so hai đầu cung cho đúng. */
+export function gocChuan(a: number): number {
+  const hai = 2 * Math.PI;
+  return ((a % hai) + hai) % hai;
 }

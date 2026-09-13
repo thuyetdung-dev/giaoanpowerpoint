@@ -14,18 +14,32 @@
 
 import { chromium } from "playwright";
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { katexCssWithFonts } from "./katex-css.mjs";
 /* Chọn bài giảng qua biến môi trường LESSON:
      (mặc định) lesson-sample.mjs — Bài 1, dùng kiểm tra cỡ chữ
      bai4                        — Bài 4, dùng kiểm tra công thức Toán */
-const mod = process.env.LESSON === "bai4" ? "./lesson-bai4.mjs" : "./lesson-sample.mjs";
+const mod =
+  process.env.LESSON === "bai4" ? "./lesson-bai4.mjs"
+  : process.env.LESSON === "khaosat" ? "./lesson-khaosat.mjs"
+  : "./lesson-sample.mjs";
 const { LESSON } = await import(mod);
 
 const css = ["globals", "bbt", "features", "reference", "v9-layout", "v11", "slide"]
   .map((n) => readFileSync(new URL(`../app/${n}.css`, import.meta.url), "utf8"))
   .join("\n");
 const katexCss = katexCssWithFonts();
-const bundle = readFileSync("/tmp/export-bundle.js", "utf8");
+/* Tự dựng lại bundle mỗi lần chạy — xem lời giải thích trong
+   scripts/measure-visuals.mjs. Tôi đã một lần đo tệp PowerPoint dựng từ bundle
+   cũ và tưởng bản mới còn lỗi dấu thập phân; đo vào bản cũ thì kết luận nào
+   cũng vô nghĩa. */
+const BUNDLE = "/tmp/export-bundle.js";
+execFileSync(new URL("../node_modules/.bin/esbuild", import.meta.url).pathname, [
+  new URL("./_export-entry.tsx", import.meta.url).pathname,
+  "--bundle", `--outfile=${BUNDLE}`, "--format=iife", "--jsx=automatic",
+  '--define:process.env.NODE_ENV="production"',
+], { cwd: new URL("../", import.meta.url).pathname, stdio: ["ignore", "ignore", "inherit"] });
+const bundle = readFileSync(BUNDLE, "utf8");
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || "/opt/pw-browsers/chromium" });
 const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });

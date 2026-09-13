@@ -184,6 +184,46 @@ export function khaoSatHamSo(bieuThuc: string, tenBai = ""): KhaoSatResult {
   const xa = tiemCanXaVoCuc(rong, 1) ?? tiemCanXaVoCuc(rong, -1);
   const tcXa = xa ? duongThang(xa.a, xa.b) : null;
 
+  /**
+   * TÂM ĐỐI XỨNG (V12.1).
+   *
+   * Hàm phân thức nào cũng có tâm đối xứng I, và SGK luôn đánh dấu nó trên đồ
+   * thị — bài khảo sát thiếu I là thiếu một phần của đáp án. I là GIAO ĐIỂM của
+   * tiệm cận đứng với tiệm cận ngang hoặc tiệm cận xiên, nên có sẵn cả hai rồi
+   * là tính ra ngay. Đúng một tiệm cận đứng thì mới có một tâm; hàm có hai cực
+   * (ví dụ 1/(x²-1)) thì không có tâm đối xứng theo nghĩa này.
+   */
+  const tamPhanThuc = poles.length === 1 && xa
+    ? { x: lamDep(poles[0], 1e-6), y: lamDep(xa.a * poles[0] + xa.b, 1e-6) }
+    : null;
+
+  /**
+   * ĐA THỨC BẬC BA CŨNG CÓ TÂM ĐỐI XỨNG: chính là ĐIỂM UỐN, nơi y″ = 0.
+   * SGK luôn ghi điều này khi khảo sát hàm bậc ba, nên thiếu nó là thiếu một
+   * phần đáp án. Nhận ra bằng cách lấy đạo hàm hai lần: y″ của hàm bậc ba là
+   * một hàm BẬC NHẤT, và hàm bậc nhất thì nghiệm tính được bằng một phép chia.
+   */
+  const tamBacBa = (() => {
+    if (poles.length) return null;               // có tiệm cận đứng thì đã xử lý ở trên
+    const d1 = daoHam(rong);
+    if (!d1.ok || !d1.expr) return null;
+    const d2 = daoHam(d1.expr);
+    if (!d2.ok || !d2.expr) return null;
+    const c2 = compileExpression(d2.expr);
+    if (!c2.ok) return null;
+    const a0 = c2.eval(0), a1 = c2.eval(1), a2 = c2.eval(2);
+    if (![a0, a1, a2].every(Number.isFinite)) return null;
+    const he = a1 - a0;
+    // Bậc nhất thật sự: hai bước liên tiếp phải bằng nhau, và hệ số khác 0.
+    if (Math.abs((a2 - a1) - he) > 1e-9 || Math.abs(he) < 1e-12) return null;
+    const xu = lamDep(-a0 / he, 1e-6);
+    const yu = lamDep(evalAt(rong, xu), 1e-6);
+    return Number.isFinite(yu) ? { x: xu, y: yu } : null;
+  })();
+
+  const tam = tamPhanThuc ?? tamBacBa;
+  const tamLaDiemUon = !tamPhanThuc && !!tamBacBa;
+
   /* ---------- Dựng các slide ---------- */
   const dongNoiDung: string[] = [`Hàm số: $y = ${yLatex}$.`, `Tập xác định: $${txd}$.`];
   if (dh.ok) dongNoiDung.push(`Đạo hàm: $y' = ${dh.latex}$.`);
@@ -216,6 +256,7 @@ export function khaoSatHamSo(bieuThuc: string, tenBai = ""): KhaoSatResult {
     [
       ...cucTri.filter((e) => Number.isFinite(e.x)).map((e) => evalAt(rong, e.x)),
       ...(xa && xa.kind === "horizontal" ? [xa.b] : []),
+      ...(tam ? [tam.y] : []),
     ],
   );
 
@@ -230,22 +271,48 @@ export function khaoSatHamSo(bieuThuc: string, tenBai = ""): KhaoSatResult {
             : { kind: "oblique" as const, expression: bieuThucDuongThang(xa.a, xa.b) }]
         : []),
     ],
-    points: cucTri
-      .filter((e) => e.loai !== "plain" && Number.isFinite(e.x))
-      .map((e) => {
-        const y = evalAt(rong, e.x);
-        return {
-          x: lamDep(e.x, 1e-6), y: lamDep(y, 1e-6),
-          label: `${e.loai === "max" ? "CĐ" : "CT"}(${vietSo(e.x)}; ${vietSo(y)})`,
-          kind: e.loai,
-        };
-      })
-      .filter((p) => Number.isFinite(p.y)),
+    /**
+     * ĐỒ THỊ KHÔNG ĐÁNH DẤU ĐIỂM (V12.2) — theo yêu cầu của thầy Dũng.
+     *
+     * V12.1 chấm và ghi nhãn cả ba điểm CĐ, CT và tâm đối xứng I. Tôi đã đo
+     * lại: ba chấm nằm ĐÚNG toạ độ, sai số 0,0000 px. Nhưng đúng toạ độ không
+     * có nghĩa là hình dễ nhìn. Khung nhìn của hàm này cao 14 đơn vị trên một
+     * khung vẽ 333 px, tức 1 đơn vị ≈ 17 px — trong khi cỡ chữ sàn là 36 px.
+     * Mỗi nhãn vì thế CAO HƠN HAI ĐƠN VỊ. Ba nhãn nằm trong vùng cao 4 đơn vị
+     * thì dù xếp cách nào cũng phải chen nhau, và nhãn lệch khỏi chấm bao nhiêu
+     * cũng thành "chấm sai vị trí" dưới mắt người đọc.
+     *
+     * Cách chữa đúng là bỏ hẳn chúng khỏi hình, vì các con số ấy KHÔNG MẤT ĐI:
+     * toạ độ cực trị đã có ở slide 1 và trong bảng biến thiên ở slide 2, còn
+     * tâm đối xứng ghi thành một dòng chữ ngay dưới đồ thị. Hình chỉ còn đường
+     * cong và hai đường tiệm cận — đúng thứ cần nhìn.
+     *
+     * Trường `points` vẫn còn trong lib/types.ts: thầy nào muốn đánh dấu một
+     * điểm cụ thể thì tự khai trong ô dữ liệu hình, phần mềm vẫn vẽ.
+     */
   };
 
   const dongTiemCan: string[] = [];
+  /* Toạ độ cực trị chuyển từ HÌNH sang CHỮ: hình không còn chấm nào, nên slide
+     đồ thị phải tự nói ra hai điểm ấy, đừng bắt thầy lật lại slide 1. */
+  const dsCucTri = cucTri
+    .filter((e) => e.loai !== "plain" && Number.isFinite(e.x))
+    .map((e) => ({ x: lamDep(e.x, 1e-6), y: lamDep(evalAt(rong, e.x), 1e-6), loai: e.loai }))
+    .filter((e) => Number.isFinite(e.y));
+  if (dsCucTri.length) {
+    const cum = dsCucTri.map(
+      (e) => `${e.loai === "max" ? "điểm cực đại" : "điểm cực tiểu"} $(${vietSo(e.x)}; ${vietSo(e.y)})$`,
+    );
+    /* Nối kiểu tiếng Việt: "A và B", "A, B và C" — không phải "A và B và C". */
+    const noi = cum.length <= 1 ? cum[0] : `${cum.slice(0, -1).join(", ")} và ${cum[cum.length - 1]}`;
+    dongTiemCan.push(`Đồ thị đi qua ${noi}.`);
+  }
   if (tcDung.length) dongTiemCan.push(`Tiệm cận đứng: $${tcDung.join("$ và $")}$.`);
   if (tcXa) dongTiemCan.push(`Tiệm cận ${xa!.kind === "horizontal" ? "ngang" : "xiên"}: $${tcXa}$.`);
+  if (tam)
+    dongTiemCan.push(tamLaDiemUon
+      ? `Điểm uốn $I(${vietSo(tam.x)}; ${vietSo(tam.y)})$ là tâm đối xứng của đồ thị.`
+      : `Tâm đối xứng: $I(${vietSo(tam.x)}; ${vietSo(tam.y)})$ — giao của hai đường tiệm cận.`);
   if (!dongTiemCan.length) dongTiemCan.push("Hàm số không có tiệm cận.");
 
   const sections: Section[] = [

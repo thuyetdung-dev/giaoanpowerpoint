@@ -93,10 +93,9 @@ export const LESSON = {
           type: "graph",
           expression: "-x^3+3*x^2-1",
           xMin: -1.5, xMax: 3.5, yMin: -3, yMax: 4,
-          points: [
-            { x: 0, y: -1, label: "CT(0; -1)", kind: "min" },
-            { x: 2, y: 3, label: "CĐ(2; 3)", kind: "max" },
-          ],
+          /* V12.2: không đánh dấu cực trị lên đồ thị nữa — toạ độ đã có
+             trong bảng biến thiên và trong phần chữ; chấm kèm nhãn ở cỡ chữ
+             32 pt làm hình rối. */
         },
       ],
       minutes: 10,
@@ -147,10 +146,9 @@ export const LESSON = {
           expression: "(x^2+2x-2)/(x-1)",
           xMin: -6, xMax: 8, yMin: -10, yMax: 14,
           asymptotes: [{ kind: "vertical", value: 1 }, { kind: "oblique", expression: "x+3" }],
-          points: [
-            { x: 0, y: 2, label: "CĐ(0; 2)", kind: "max" },
-            { x: 2, y: 6, label: "CT(2; 6)", kind: "min" },
-          ],
+          /* V12.2: không đánh dấu cực trị lên đồ thị nữa — toạ độ đã có
+             trong bảng biến thiên và trong phần chữ; chấm kèm nhãn ở cỡ chữ
+             32 pt làm hình rối. */
         },
       ],
       minutes: 12,

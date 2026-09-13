@@ -21,7 +21,8 @@
  */
 
 import { useId } from "react";
-import { compileExpression, detectPoles } from "@/lib/mathexpr";
+import { compileExpression, detectHorizontalAsymptote, detectPoles } from "@/lib/mathexpr";
+import { soVN } from "@/lib/plot";
 import type {
   GraphVisual,
   SignVisual,
@@ -31,6 +32,7 @@ import type {
 } from "@/lib/types";
 import { ExtraVisual, isExtraVisual } from "./MathVisualsExtra";
 import { computeLevels, isMinusInf, isPlusInf, plainMath, shortLabel, tableCaption } from "@/lib/bbt";
+import { solveVariationTable, tableMatches } from "@/lib/bbtsolve";
 import { GRAPH_H, GRAPH_W, SC_HEAD, SC_ROW_H, SC_W, VT_CAPTION_H, VT_H, VT_W, svgFontPx } from "@/lib/slides";
 
 /* ------------------------------------------------------------------ */
@@ -63,6 +65,25 @@ function VariationTable({ v }: { v: VariationVisual }) {
   // biến thiên trên mọi bảng còn lại biến mất.
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const arrowId = `bbtArrow${uid}`;
+
+  /**
+   * THẨM ĐỊNH BẢNG NGAY LÚC DỰNG HÌNH (V12.1).
+   *
+   * V12.0 chỉ dựng lại bảng khi giáo viên bấm "Tự sửa" (lib/audit.ts). Nhưng
+   * repairLesson chỉ chạy sau khi sinh bài và khi bấm nút — bài nạp từ tệp JSON,
+   * bài mở lại từ thư viện, hay bảng vừa sửa tay đều KHÔNG qua đó. Hậu quả:
+   * khung xem trước và cả tệp PowerPoint vẫn có thể mang một bảng sai.
+   *
+   * Nay hình tự đối chiếu: có `expression` thì tính lại và dùng bảng đã thẩm
+   * định. Bảng KHÔNG có `expression` (bảng tham số, bảng đề bài cho sẵn) vẫn
+   * giữ nguyên — không có gì để đối chiếu thì không được đoán.
+   */
+  const daGiai = v.expression ? solveVariationTable(v.expression) : null;
+  const dungBanGiai = !!daGiai?.ok && (!v.x?.length || !tableMatches(v, daGiai));
+  const vv: VariationVisual = dungBanGiai
+    ? { ...v, x: daGiai!.x, derivative: daGiai!.derivative, values: daGiai!.values, discontinuities: daGiai!.discontinuities }
+    : v;
+
   /**
    * V11.5 vẽ khung 860×300 rồi để bộ xuất nhét vào ô rộng 7,3 in bên phải khối
    * chữ. Hệ số thu còn 0,61 nên nhãn 22 px chỉ ra 13 pt trên slide — học sinh
@@ -75,7 +96,7 @@ function VariationTable({ v }: { v: VariationVisual }) {
    * giáo khoa. Bộ sinh nội dung hay nhét cả biểu thức vào cột trái; ở cỡ chữ mới
    * nó tràn qua vạch dọc và đè lên cột giá trị (xem bài giảng Bài 4, slide 07).
    */
-  const caption = tableCaption(v);
+  const caption = tableCaption(vv);
   const capH = caption ? VT_CAPTION_H : 0;
   const H = VT_H + capH;
   const fs = svgFontPx(W, H);
@@ -88,14 +109,14 @@ function VariationTable({ v }: { v: VariationVisual }) {
   const yTop = capH + 176;
   const yBottom = H - 46;
 
-  const n = Math.max(2, v.x.length);
+  const n = Math.max(2, vv.x.length);
   // Chừa lề sau vạch dọc: V10 đặt mốc đầu tiên ngay trên vạch nên "-∞" bị vạch cắt đôi.
   const padIn = 44;
   const step = (W - L - padIn - 30) / (n - 1);
   const xs = Array.from({ length: n }, (_, i) => L + padIn + i * step);
-  const dis = new Map((v.discontinuities ?? []).map((d) => [d.index, d]));
+  const dis = new Map((vv.discontinuities ?? []).map((d) => [d.index, d]));
 
-  const { left, right } = computeLevels(v);
+  const { left, right } = computeLevels(vv);
   // computeLevels đã trả về bậc chuẩn hoá 0..1 cho TỪNG NHÁNH (xem lib/bbt.ts),
   // nên ở đây chỉ việc trải thẳng lên chiều cao ô.
   const yOfLevel = (lv: number) => yBottom - lv * (yBottom - yTop);
@@ -105,11 +126,19 @@ function VariationTable({ v }: { v: VariationVisual }) {
     return yOfLevel(side === "l" ? left[i] : right[i]);
   };
 
-  const der = v.derivative ?? [];
+  const der = vv.derivative ?? [];
   const full = der.length >= 2 * n - 3;
   const intervalSign = (i: number) => (full ? der[i * 2] : der[i]) ?? "";
-  const nodeSign = (i: number) => (full ? der[i * 2 + 1] : "0") ?? "0";
-  const vals = Array.from({ length: n }, (_, i) => v.values?.[i] ?? "");
+  /**
+   * KHÔNG BỊA SỐ 0 (V12.1).
+   *
+   * V12.0 viết `full ? der[i*2+1] : "0"` — nghĩa là khi mảng y′ chỉ có dấu trên
+   * từng khoảng (n−1 ô), phần mềm tự ghi số 0 vào MỌI mốc. Với hàm phân thức
+   * thì mốc giữa là điểm KHÔNG XÁC ĐỊNH, không phải nghiệm; ghi 0 ở đó là dạy
+   * sai. Thiếu dữ liệu thì để trống, và bộ kiểm định đã có phép báo thiếu.
+   */
+  const nodeSign = (i: number) => (full ? der[i * 2 + 1] ?? "" : "");
+  const vals = Array.from({ length: n }, (_, i) => vv.values?.[i] ?? "");
 
   /**
    * MŨI TÊN PHẢI DỪNG TRƯỚC CHỮ (V11.8).
@@ -151,7 +180,7 @@ function VariationTable({ v }: { v: VariationVisual }) {
 
       {/* hàng x */}
       {xs.map((x, i) => (
-        <text key={`x${i}`} x={x} y={xRow - 18} className="bbt-text" style={{ fontSize: fs }}>{plainMath(v.x[i] ?? "")}</text>
+        <text key={`x${i}`} x={x} y={xRow - 18} className="bbt-text" style={{ fontSize: fs }}>{plainMath(vv.x[i] ?? "")}</text>
       ))}
 
       {/* dấu trên từng khoảng */}
@@ -161,15 +190,25 @@ function VariationTable({ v }: { v: VariationVisual }) {
         </text>
       ))}
 
-      {/* giá trị y' tại điểm tới hạn (0 hoặc || nếu không xác định) */}
-      {Array.from({ length: Math.max(0, n - 2) }, (_, i) => (
-        <text key={`z${i}`} x={xs[i + 1]} y={dRow - 22} className="bbt-text" style={{ fontSize: fs }}>
-          {dis.has(i + 1) ? "‖" : plainMath(nodeSign(i))}
-        </text>
-      ))}
+      {/* giá trị y' tại điểm tới hạn.
+          Mốc gián đoạn thì KHÔNG ghi gì: vạch đôi đã được vẽ bằng NÉT xuyên
+          suốt bảng ở đúng cột ấy. V12.0 còn ghi thêm chữ "‖" vào giữa hai nét
+          đó — một hàng kẻ mảnh như sợi tóc kẹp giữa hai vạch đậm, chỉ làm bẩn
+          chỗ cần sạch. */}
+      {Array.from({ length: Math.max(0, n - 2) }, (_, i) =>
+        dis.has(i + 1) ? null : (
+          <text key={`z${i}`} x={xs[i + 1]} y={dRow - 22} className="bbt-text" style={{ fontSize: fs }}>
+            {plainMath(nodeSign(i))}
+          </text>
+        ),
+      )}
 
       {/* mũi tên biến thiên — chiều lấy từ dấu y', không lấy từ độ lớn giá trị */}
       {Array.from({ length: n - 1 }, (_, i) => {
+        // Dấu y′ trống hoặc không phải + / − thì KHÔNG vẽ mũi tên: vẽ ra là
+        // khẳng định một chiều biến thiên mà dữ liệu không hề nói.
+        const dau = plainMath(intervalSign(i));
+        if (dau !== "+" && dau !== "-" && dau !== "−") return null;
         const y1 = yOfNode(i, "r", vals[i]);
         const y2 = yOfNode(i + 1, "l", vals[i + 1]);
         const x1 = xs[i] + inset(i, "r");
@@ -244,6 +283,12 @@ function SignChart({ v }: { v: SignVisual }) {
       <rect x="1" y="1" width={W - 2} height={H - 2} fill="#fff" stroke="#263746" strokeWidth="1.6" />
       <line x1={L} x2={L} y1="1" y2={H - 1} stroke="#263746" strokeWidth="1.6" />
       <line x1="1" x2={W - 1} y1={SC_HEAD} y2={SC_HEAD} stroke="#263746" />
+      {/* Đường dẫn cột mảnh: theo một mốc x qua cả các hàng tử, mẫu, thương.
+          Bảng ba hàng mà không có nó thì mắt phải tự dóng, rất dễ đọc lệch cột. */}
+      {xs.map((x, i) => (
+        <line key={`guide${i}`} x1={x} x2={x} y1={SC_HEAD} y2={H - 1}
+              stroke="#E2EAF1" strokeWidth="1.4" />
+      ))}
       <text x={L / 2} y={SC_HEAD - 20} className="bbt-label" style={{ fontSize: fs + 1 }}>x</text>
       {xs.map((x, i) => (
         <text key={i} x={x} y={SC_HEAD - 20} className="bbt-text" style={{ fontSize: fs }}>{plainMath(v.x[i] ?? "")}</text>
@@ -261,11 +306,37 @@ function SignChart({ v }: { v: SignVisual }) {
                 {plainMath((full ? signs[i * 2] : signs[i]) ?? "")}
               </text>
             ))}
-            {Array.from({ length: Math.max(0, n - 2) }, (_, i) => (
-              <text key={`z${i}`} x={xs[i + 1]} y={yBase - 16} className="bbt-text" style={{ fontSize: fs }}>
-                {plainMath((full ? signs[i * 2 + 1] : "0") ?? "0")}
-              </text>
-            ))}
+            {Array.from({ length: Math.max(0, n - 2) }, (_, i) => {
+              /* Thiếu ô giá trị tại mốc thì để TRỐNG. V12.0 tự ghi "0" cho
+                 mọi hàng ở mọi mốc — bảng xét dấu tích (x-1)(x+2) hoá ra
+                 hàng "x - 1" cũng bằng 0 tại x = -2, tức là dạy sai. */
+              const o = plainMath((full ? signs[i * 2 + 1] ?? "" : "") ?? "");
+              /**
+               * Dấu "|" và "||" vẽ bằng NÉT, không bằng chữ.
+               *
+               * Chữ "|" của phông Times chỉ dày khoảng 2 px trong khung vẽ; thu
+               * xuống cỡ slide rồi chiếu lên tường thì gần như mất hẳn, mà đúng
+               * chỗ đó lại là chỗ cần thấy rõ nhất: nó phân biệt "không phải
+               * nghiệm của dòng này" với "bằng 0". Vẽ bằng nét thì bề dày do ta
+               * quy định.
+               */
+              if (o === "|" || o === "||" || o === "‖") {
+                const day = 3.6;
+                const yA = yBase - rowH + 12, yB = yBase - 10;
+                const offs = o === "|" ? [0] : [-4.5, 4.5];
+                return (
+                  <g key={`z${i}`}>
+                    {offs.map((d, k) => (
+                      <line key={k} x1={xs[i + 1] + d} x2={xs[i + 1] + d} y1={yA} y2={yB}
+                            stroke="#263746" strokeWidth={day} />
+                    ))}
+                  </g>
+                );
+              }
+              return (
+                <text key={`z${i}`} x={xs[i + 1]} y={yBase - 16} className="bbt-text" style={{ fontSize: fs }}>{o}</text>
+              );
+            })}
           </g>
         );
       })}
@@ -404,6 +475,7 @@ function Graph({ v }: { v: GraphVisual }) {
 
   // vùng tô (dạy diện tích hình phẳng / tích phân)
   let shadePath = "";
+  let shadeLabel: { text: string; x: number; y: number } | null = null;
   if (v.shade) {
     const c = compileExpression(v.expression);
     if (c.ok) {
@@ -416,12 +488,63 @@ function Graph({ v }: { v: GraphVisual }) {
       }
       pts.push(`L ${sx(b).toFixed(2)} ${sy(0).toFixed(2)} Z`);
       shadePath = pts.join(" ");
+      /**
+       * Tên vùng tô ("S") — lib/types.ts cho khai báo `shade.label` từ V11 mà
+       * bộ dựng hình CHƯA BAO GIỜ vẽ nó ra. Khai báo rồi bị bỏ im lặng đúng
+       * như lỗi `showParallelogram` của hình vectơ. Bài diện tích hình phẳng
+       * không có chữ S thì không chỉ được vào đâu mà nói.
+       * Đặt ở giữa bề ngang vùng, nửa chiều cao đường cong — tức là trong lòng
+       * vùng tô, không đè lên đường cong.
+       */
+      const giua = (a + b) / 2;
+      const yGiua = c.eval(giua);
+      if (v.shade.label && Number.isFinite(yGiua)) {
+        const yNhan = Math.max(yMin, Math.min(yMax, yGiua / 2));
+        /* Vùng tô hay đối xứng quanh Oy (bài ∫₋₂² (4 − x²)dx), khi ấy chữ S
+           rơi đúng vào trục tung và vào dãy số của nó. Dịch sang phải một
+           quãng bằng cỡ chữ là thoát, mà vẫn nằm trong lòng vùng. */
+        const xNhan = sx(giua);
+        const lech = Math.abs(xNhan - (xMin <= 0 && xMax >= 0 ? sx(0) : p)) < fs * 1.2 ? fs * 1.1 : 0;
+        shadeLabel = { text: v.shade.label, x: xNhan + lech, y: sy(yNhan) };
+      }
     }
   }
 
   const pointFill: Record<string, string> = {
     max: "#B91C1C", min: "#1D4ED8", inflection: "#7C3AED", root: "#0F766E", plain: "#EF8354",
+    center: "#263746",
   };
+
+  /**
+   * TỰ DÒ TIỆM CẬN ĐỨNG TỪ BIỂU THỨC (V12.1).
+   *
+   * Tiệm cận đứng suy ra được CHẮC CHẮN từ hàm số, nên không có lý gì bắt bộ
+   * sinh nội dung phải khai đúng mới vẽ. V12.0 chỉ vẽ những đường đã khai: AI
+   * quên khai là đồ thị hàm phân thức hiện ra không có đường nét đứt nào, học
+   * sinh không thấy được chỗ hàm số không xác định.
+   *
+   * Đường nào đã khai rồi thì KHÔNG vẽ lại — vẽ hai lần lên cùng một chỗ làm
+   * nét đậm gấp đôi, nhìn ra một đường liền.
+   */
+  const tcDaKhai = v.asymptotes ?? [];
+  const tcTuDo = v.expression
+    ? detectPoles(v.expression, xMin, xMax, 1800)
+        .filter((value) => !tcDaKhai.some((a) => a.kind === "vertical" && a.value !== undefined && Math.abs(a.value - value) < 1e-4))
+        .map((value) => ({ kind: "vertical" as const, value }))
+    : [];
+  /**
+   * Tiệm cận NGANG cũng tự dò. Dò được tiệm cận đứng mà bỏ tiệm cận ngang thì
+   * đồ thị hàm nhất biến vẫn thiếu một nửa cách trình bày của SGK.
+   * Chỉ vẽ khi đường đó nằm trong khung nhìn, và khi chưa khai báo sẵn tiệm
+   * cận ngang hay tiệm cận xiên (xiên rồi thì không thể có ngang).
+   */
+  const daCoNgangHoacXien = tcDaKhai.some((a) => a.kind === "horizontal" || a.kind === "oblique");
+  const tcNgang = v.expression && !daCoNgangHoacXien ? detectHorizontalAsymptote(v.expression) : null;
+  const tcTuDoNgang =
+    tcNgang !== null && tcNgang > yMin && tcNgang < yMax
+      ? [{ kind: "horizontal" as const, value: tcNgang }]
+      : [];
+  const tiemCan = [...tcDaKhai, ...tcTuDo, ...tcTuDoNgang];
 
   /**
    * ĐẶT NHÃN ĐIỂM ĐẶC BIỆT — tính trước cho CẢ BỘ, không tính rời từng điểm.
@@ -443,10 +566,31 @@ function Graph({ v }: { v: GraphVisual }) {
    * trèo lên chữ "y" ở đầu trục tung — hai lỗi đúng như ảnh thầy gửi.
    */
   const vatCan: { x0: number; x1: number; y: number }[] = [];
-  const beRong = (s: unknown, co = fs) => String(s).length * co * 0.54;
+  const beRong = (s: unknown, co = fs) =>
+    (typeof s === "number" ? soVN(s) : String(s)).length * co * 0.54;
+
+  /**
+   * SỐ TRÊN TRỤC HOÀNH BỊ CHẤM ĐÈ thì hạ xuống một dòng.
+   *
+   * Đồ thị y = x³ − 3x + 1 với khung [−4; 4]: cực tiểu (1; −1) rơi đúng vào
+   * hàng số của trục hoành, chấm xanh trùm mất số "1" — mà "1" chính là hoành
+   * độ cần đọc. Hạ riêng số đó xuống một dòng thì nó vẫn nằm dưới đúng đường
+   * lưới của mình nên không thể đọc lệch, lại không bị che.
+   */
+  const yHangSoX = (yMin <= 0 && yMax >= 0 ? sy(0) : H - p) + fs + 6;
+  const yCuaSoX = (t: number) => {
+    const cx = sx(t), nua = beRong(t) / 2, giua = yHangSoX - fs * 0.36;
+    const biDe = (v.points ?? []).some(
+      (q) => Math.abs(sx(q.x) - cx) < nua + 9 && Math.abs(sy(q.y) - giua) < fs * 0.5 + 9,
+    );
+    if (!biDe) return yHangSoX;
+    const duoi = yHangSoX + fs * 0.95;
+    return duoi <= H - 4 ? duoi : yHangSoX;
+  };
+
   tickX.forEach((t) => {
     const w = beRong(t);
-    vatCan.push({ x0: sx(t) - w / 2, x1: sx(t) + w / 2, y: axisYpx + fs + 6 });
+    vatCan.push({ x0: sx(t) - w / 2, x1: sx(t) + w / 2, y: yCuaSoX(t) });
   });
   tickY.forEach((t) => {
     vatCan.push({ x0: axisXpx - 12 - beRong(t), x1: axisXpx - 12, y: sy(t) + fs / 3 });
@@ -493,23 +637,124 @@ function Graph({ v }: { v: GraphVisual }) {
   // Chỉ cần nằm trong khung ẢNH; lề p phía trên vốn để dành cho nhãn của điểm
   // sát đỉnh. Chặn ở p sẽ đẩy nhãn cực đại xuống dưới, đè lên đúng đường cong.
   const tronKhung = (ty: number) => ty >= fs * 0.9 && ty <= H - 8;
+  /**
+   * Trục Ox cũng là một vật cản.
+   *
+   * Bản đầu của V12.1 xếp chỗ theo khoảng cách nên nhãn "CT(1; 0)" của hàm
+   * x³−3x+2 nhảy sang NGANG chấm — mà chấm (1; 0) nằm ngay trên trục hoành,
+   * nên đường trục kẻ ngang giữa dòng chữ, gạch đôi cả nhãn. Cũng chính vì thế
+   * mà điểm sát trục mới được đẩy xa 2,35 lần cỡ chữ (buoc1) chứ không phải
+   * 1,2 lần: để chữ xuống hẳn dưới cả hàng số của trục.
+   *
+   * Thân chữ chiếm khoảng [ty − 0,72·fs ; ty]. Chặn đúng dải đó (nới một chút)
+   * thay vì chặn đối xứng, để nhãn vẫn được đứng SÁT phía trên trục — chỗ đó
+   * hợp lệ và thường là chỗ đẹp nhất.
+   */
+  const deTrucNgang = (ty: number) => axisYpx > ty - fs * 0.85 && axisYpx < ty + fs * 0.12;
+  /**
+   * Nhãn phải ở CÙNG PHÍA trục hoành với chấm của nó.
+   *
+   * Lỗi thật: cực tiểu (1; −1) của y = x³ − 3x + 1 nằm dưới trục, nhưng nhãn
+   * "CT(1; −1)" lại được đặt phía TRÊN trục — giữa nhãn và chấm có cả một đường
+   * trục kẻ ngang chắn qua, mà lại còn gần nên không kẻ nét dẫn. Nhìn vào
+   * tưởng nhãn của một điểm khác nằm trên trục.
+   * Chấm nằm ngay trên trục (|py − trục| nhỏ) thì không xét, vì khi ấy "phía"
+   * không có nghĩa.
+   */
+  /**
+   * NHÃN KHÔNG ĐÈ LÊN ĐƯỜNG CONG.
+   *
+   * Đây là tiêu chuẩn thật, hơn mọi quy ước trên/dưới: đồ thị y = x⁴ − 2x² + 1
+   * có hai cực tiểu nằm ngay trên trục hoành, xếp nhãn lên phía trên thì nhãn
+   * "CT(1; 0)" nằm đúng trên nhánh đi lên của đường cong. Chữ có viền trắng nên
+   * vẫn đọc được, nhưng đường cong bị chữ cắt mất một khúc — mà đường cong là
+   * thứ chính của hình.
+   * Thử 11 điểm dọc bề ngang nhãn; đường cong chạm dải chữ là chỗ đó bị loại.
+   */
+  const xTuPx = (px2: number) => xMin + ((px2 - p) * (xMax - xMin)) / (W - 2 * p);
+  const hamDaBien = curves.map((c) => compileExpression(c.expression)).filter((c) => c.ok);
+  const deDuongCong = (c: { ty: number; x0: number; x1: number }) => {
+    const yA = c.ty - fs * 0.72, yB = c.ty + fs * 0.12;
+    for (const ham of hamDaBien)
+      for (let k = 0; k <= 10; k++) {
+        const yv = ham.eval(xTuPx(c.x0 + ((c.x1 - c.x0) * k) / 10));
+        if (!Number.isFinite(yv)) continue;
+        const py2 = sy(yv);
+        if (py2 > yA && py2 < yB) return true;
+      }
+    return false;
+  };
+
+  const khacPhiaTruc = (ty: number, py: number) => {
+    if (Math.abs(py - axisYpx) <= fs * 0.3) return false;
+    return py > axisYpx ? ty <= axisYpx : ty - fs * 0.72 >= axisYpx;
+  };
   placedPoints.forEach((q, i) => {
-    const vuong = (ty: number) => {
-      const chongChu = vatCan.some((o) => !(o.x1 < q.x0 || o.x0 > q.x1) && Math.abs(o.y - ty) < fs * 1.05);
+    const wNhan = q.x1 - q.x0;
+    const uu = q.below ? 1 : -1;
+    /**
+     * Thử lên/xuống trước, HẾT CHỖ THÌ SANG TRÁI / SANG PHẢI (V12.1).
+     *
+     * V12.0 chỉ đẩy theo chiều dọc. Với đồ thị phân thức có ba nhãn gần nhau
+     * (CĐ, CT và tâm đối xứng I) thì cả ba xếp thành một cột dài, nhãn cuối bị
+     * đẩy ra sát mép và đè lên đường cong.
+     */
+    type ChoDat = { tx: number; ty: number; anchor: "start" | "middle" | "end"; x0: number; x1: number; gia: number };
+    const hopO = (tx2: number, an: "start" | "middle" | "end") => {
+      const x0 = an === "middle" ? tx2 - wNhan / 2 : an === "start" ? tx2 : tx2 - wNhan;
+      return { x0, x1: x0 + wNhan };
+    };
+    /**
+     * Xếp chỗ đặt theo GIÁ = khoảng cách tới chấm + tiền phạt cho chỗ trái quy
+     * ước, rồi chọn chỗ rẻ nhất còn trống.
+     *
+     * Vì sao phải xếp theo giá: bản đầu của V12.1 thử hết TÁM bậc theo chiều
+     * dọc trước khi mới thử sang bên. Với đồ thị (x²+2x−2)/(x−1) — ba nhãn CĐ,
+     * CT và tâm I gần nhau — nhãn "CĐ(0; 2)" bị đẩy lên ba dòng, đứng ngay
+     * cạnh CHẤM cực tiểu (2; 6); ai đọc cũng tưởng chấm xanh là CĐ(0; 2). Nhãn
+     * đứng sát chấm của mình mới là nhãn đúng, nên chỗ sát chấm phải được thử
+     * TRƯỚC chỗ xa, kể cả khi nó nằm ngang thay vì nằm trên.
+     */
+    const thu: ChoDat[] = [];
+    const them = (tx2: number, ty2: number, an: "start" | "middle" | "end", phat: number) =>
+      thu.push({ tx: tx2, ty: ty2, anchor: an, ...hopO(tx2, an),
+                 gia: Math.hypot(tx2 - q.px, ty2 - q.py) + phat });
+    for (let k = 0; k < 4; k++) {
+      them(q.tx, q.py + uu * (q.buoc1 + k * fs * 1.25), q.anchor, 0);
+      them(q.tx, q.py - uu * (fs * 1.2 + k * fs * 1.25), q.anchor, fs * 0.7);
+    }
+    for (const dy of [fs * 0.33, -fs * 0.9, fs * 1.45]) {
+      them(q.px + fs * 0.5, q.py + dy, "start", fs * 0.9);
+      them(q.px - fs * 0.5, q.py + dy, "end", fs * 0.9);
+    }
+    /* Đè đường cong là một khoản TIỀN PHẠT, không phải một lệnh cấm.
+       Lần đầu tôi cấm hẳn: nhãn "CĐ(0; 2)" của hàm (x²+2x−2)/(x−1) liền bị đẩy
+       lên sát mép trên, còn "CT(2; 6)" thì rơi xuống cạnh vòng tròn tâm đối
+       xứng — đọc vào tưởng tên của vòng tròn ấy. Nhãn đứng xa chấm của mình là
+       lỗi NẶNG HƠN nhãn chạm đường cong, nên phải cân hai cái trên cùng một
+       bàn cân chứ không xếp cái nào lên trước. */
+    thu.forEach((c) => { if (deDuongCong(c)) c.gia += fs * 1.0; });
+    thu.sort((a, b) => a.gia - b.gia);
+
+    const hopLe = (c: ChoDat) => {
+      if (c.x0 < 6 || c.x1 > W - 6) return false;
+      if (!tronKhung(c.ty)) return false;
+      if (deTrucNgang(c.ty)) return false;
+      if (khacPhiaTruc(c.ty, q.py)) return false;
+      const chongChu = vatCan.some((o) => !(o.x1 < c.x0 || o.x0 > c.x1) && Math.abs(o.y - c.ty) < fs * 1.05);
       if (chongChu) return false;
       return !placedPoints.some((o, j) => {
         if (j === i) return false;
-        const chongNhan = j < i && !(o.x1 < q.x0 || o.x0 > q.x1) && Math.abs(o.ty - ty) < fs * 1.15;
-        const phuCham = o.px > q.x0 - 10 && o.px < q.x1 + 10 && Math.abs(o.py - ty) < fs * 0.85;
+        const chongNhan = j < i && !(o.x1 < c.x0 || o.x0 > c.x1) && Math.abs(o.ty - c.ty) < fs * 1.15;
+        const phuCham = o.px > c.x0 - 10 && o.px < c.x1 + 10 && Math.abs(o.py - c.ty) < fs * 0.85;
         return chongNhan || phuCham;
       });
     };
-    const uu = q.below ? 1 : -1;
-    const thu: number[] = [];
-    for (const chieu of [uu, -uu])
-      for (let k = 0; k < 4; k++)
-        thu.push(q.py + chieu * ((chieu === uu ? q.buoc1 : fs * 1.2) + k * fs * 1.25));
-    q.ty = thu.find((ty) => tronKhung(ty) && vuong(ty)) ?? Math.min(Math.max(thu[0], fs * 0.9), H - 8);
+    /* Lượt một đòi tránh cả đường cong; hết chỗ thì lượt hai bỏ đòi hỏi đó —
+       thà chữ chạm đường cong (vẫn đọc được nhờ viền trắng) còn hơn nhãn bị
+       đẩy ra chỗ không rõ của điểm nào. */
+    const dat = thu.find(hopLe) ?? { ...thu[0], ty: Math.min(Math.max(thu[0].ty, fs * 0.9), H - 8) };
+    q.tx = dat.tx; q.ty = dat.ty; q.anchor = dat.anchor; q.x0 = dat.x0; q.x1 = dat.x1;
     // Nhãn đã rời xa chấm thì kẻ nét mảnh nối lại cho biết của điểm nào.
     if (Math.abs(q.ty - q.py) > fs * 1.6 || Math.abs((q.x0 + q.x1) / 2 - q.px) > fs) q.leader = true;
   });
@@ -533,6 +778,10 @@ function Graph({ v }: { v: GraphVisual }) {
       </g>
 
       {shadePath && <path d={shadePath} fill="#0F766E22" stroke="none" clipPath={`url(#${clipId})`} />}
+      {shadeLabel && (
+        <text x={shadeLabel.x} y={shadeLabel.y} className="graph-point-label svg-halo"
+              style={{ fontSize: fs + 4, textAnchor: "middle" }}>{shadeLabel.text}</text>
+      )}
 
       {/* trục */}
       <g stroke="#263746" strokeWidth="2.2">
@@ -545,10 +794,13 @@ function Graph({ v }: { v: GraphVisual }) {
       </g>
       <g className="graph-tick svg-halo" style={{ fontSize: fs }}>
         {tickX.map((t, i) => (
-          <text key={`tx${i}`} x={sx(t)} y={(yMin <= 0 && yMax >= 0 ? sy(0) : H - p) + fs + 6} textAnchor="middle">{t}</text>
+          /* soVN: dấu thập phân là DẤU PHẨY theo chuẩn Việt Nam. Dãy vạch
+             của đồ thị ∫ (4 − x²) đang in "4.5" và "1.5" kiểu Anh — trong khi
+             biểu đồ hộp, biểu đồ cột đã ghi đúng "5,5" từ V12.0. */
+          <text key={`tx${i}`} x={sx(t)} y={yCuaSoX(t)} textAnchor="middle">{soVN(t)}</text>
         ))}
         {tickY.map((t, i) => (
-          <text key={`ty${i}`} x={(xMin <= 0 && xMax >= 0 ? sx(0) : p) - 12} y={sy(t) + fs / 3} textAnchor="end">{t}</text>
+          <text key={`ty${i}`} x={(xMin <= 0 && xMax >= 0 ? sx(0) : p) - 12} y={sy(t) + fs / 3} textAnchor="end">{soVN(t)}</text>
         ))}
       </g>
       {/* Tên trục căn theo MÉP KHUNG, không theo mũi tên. V11.6 đặt tên trục
@@ -559,8 +811,8 @@ function Graph({ v }: { v: GraphVisual }) {
       <text x={Math.min((xMin <= 0 && xMax >= 0 ? sx(0) : p) + 14, W - 8)} y={Math.max(fs + 4, p - 14)}
             textAnchor="start" className="axis-name svg-halo" style={{ fontSize: fs + 2 }}>{v.yLabel || "y"}</text>
 
-      {/* tiệm cận */}
-      {v.asymptotes?.map((a, i) => {
+      {/* tiệm cận — gồm cả đường tự dò được từ biểu thức */}
+      {tiemCan.map((a, i) => {
         if (a.kind === "vertical" && a.value !== undefined)
           return <line key={i} stroke="#D1495B" strokeDasharray="8 6" x1={sx(a.value)} x2={sx(a.value)} y1={p} y2={H - p} />;
         if (a.kind === "horizontal" && a.value !== undefined)
@@ -595,7 +847,11 @@ function Graph({ v }: { v: GraphVisual }) {
                   x2={Math.min(Math.max(q.px, q.x0), q.x1)} y2={q.ty + (q.below ? -fs * 0.32 : fs * 0.28)}
                   stroke="#8b9aa8" strokeWidth="1.6" strokeDasharray="4 3" />
           )}
-          <circle cx={q.px} cy={q.py} r="8" fill={pointFill[q.kind || "plain"]} stroke="#fff" strokeWidth="2" />
+          {/* Tâm đối xứng vẽ vòng tròn RỖNG: nó KHÔNG thuộc đồ thị (hàm phân
+              thức không xác định tại hoành độ đó). Chấm đặc là nói sai. */}
+          <circle cx={q.px} cy={q.py} r="8"
+                  fill={q.kind === "center" ? "#fff" : pointFill[q.kind || "plain"]}
+                  stroke={q.kind === "center" ? "#263746" : "#fff"} strokeWidth="2.4" />
           <text x={q.tx} y={q.ty} className="graph-point-label svg-halo"
                 style={{ fontSize: fs, textAnchor: q.anchor }}>
             {q.label}
@@ -605,9 +861,12 @@ function Graph({ v }: { v: GraphVisual }) {
 
       {/* chú giải nhiều đồ thị */}
       {rendered.length > 1 && (
+        /* Chú giải xếp thành MỘT HÀNG ở lề trên, ngoài vùng vẽ. V12.0 đặt nó
+           trong khung ở góc trên trái nên nó che đường cong, lưới và nhãn
+           điểm — đúng lỗi mà miền nghiệm đã phải sửa. */
         <g className="graph-legend svg-halo" style={{ fontSize: fs }}>
           {rendered.map((r, i) => (
-            <g key={i} transform={`translate(${p + 10}, ${p + fs + i * (fs + 10)})`}>
+            <g key={i} transform={`translate(${p + i * ((W - 2 * p) / rendered.length)}, ${Math.max(fs * 0.95, p * 0.5)})`}>
               <line x1="0" x2="34" y1="0" y2="0" stroke={r.color} strokeWidth="4"
                     strokeDasharray={r.dashed ? "8 5" : undefined} />
               {/* Không có nhãn thì viết "y = …" bằng ký hiệu Toán, đừng in

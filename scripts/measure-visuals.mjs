@@ -12,6 +12,7 @@
 
 import { chromium } from "playwright";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { katexCssWithFonts } from "./katex-css.mjs";
 /* SAMPLES=hinh dùng bộ rà soát mở rộng (nhiều ca mỗi loại); để trống dùng bộ
    một-mẫu-mỗi-loại cho phép đo cỡ chữ. */
@@ -25,7 +26,20 @@ const css = ["globals", "bbt", "features", "reference", "v9-layout", "v11", "sli
   .map((n) => readFileSync(new URL(`../app/${n}.css`, import.meta.url), "utf8"))
   .join("\n");
 const katexCss = katexCssWithFonts();
-const bundle = readFileSync("/tmp/vis-bundle.js", "utf8");
+
+/* Tự dựng lại bundle MỖI LẦN chạy.
+   Trước đây phải gõ lệnh esbuild bằng tay trước khi đo. Có lần tôi quên, bộ đo
+   đọc bundle cũ và tôi ngồi xem ẢNH CỦA BẢN TRƯỚC rồi tưởng là bản mới — sai
+   nguy hiểm hơn cả không đo. Nay bundle được dựng ngay trong bộ đo nên không
+   còn khe hở đó. (esbuild chỉ là công cụ đo, KHÔNG nằm trong package.json để
+   Vercel không phải tải về.) */
+const BUNDLE = "/tmp/vis-bundle.js";
+execFileSync(new URL("../node_modules/.bin/esbuild", import.meta.url).pathname, [
+  new URL("./_entry.tsx", import.meta.url).pathname,
+  "--bundle", `--outfile=${BUNDLE}`, "--format=iife", "--jsx=automatic",
+  '--define:process.env.NODE_ENV="production"',
+], { cwd: new URL("../", import.meta.url).pathname, stdio: ["ignore", "ignore", "inherit"] });
+const bundle = readFileSync(BUNDLE, "utf8");
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || "/opt/pw-browsers/chromium" });
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });

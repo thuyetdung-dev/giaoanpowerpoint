@@ -98,11 +98,9 @@ export const LESSON = {
           type: "graph",
           expression: "x^4-2x^2+1",
           xMin: -2.2, xMax: 2.2, yMin: -1, yMax: 4,
-          points: [
-            { x: 0, y: 1, label: "CĐ(0; 1)", kind: "max" },
-            { x: -1, y: 0, label: "CT(-1; 0)", kind: "min" },
-            { x: 1, y: 0, label: "CT(1; 0)", kind: "min" },
-          ],
+          /* V12.2: không đánh dấu cực trị lên đồ thị nữa — toạ độ đã có
+             trong bảng biến thiên và trong phần chữ; chấm kèm nhãn ở cỡ chữ
+             32 pt làm hình rối. */
         },
       ],
       minutes: 10,

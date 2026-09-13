@@ -59,10 +59,12 @@ export const SAMPLES = {
     vectors: [{ x: 1, y: 1, z: 1, label: "n" }],
     range: 4,
   },
+  /* Tâm mặt cầu chỉ khai MỘT chỗ. Mẫu cũ khai cả sphere.label lẫn một điểm
+     cùng tên ở cùng toạ độ nên hai nhãn viết đè nhau — nay bộ kiểm định cảnh
+     báo ca đó (OXYZ_TRUNG_NHAN). */
   oxyz_mat_cau: {
     type: "oxyz",
     sphere: { x: 1, y: 1, z: 1, r: 2, label: "I" },
-    points: [{ x: 1, y: 1, z: 1, label: "I" }],
     range: 4,
   },
   oxyz_mat_phang: {
@@ -230,6 +232,30 @@ export const SAMPLES = {
     signs: ["+", "0", "-", "0", "+"],
   },
 
+  /* V12.1 — AI chỉ cho dấu trên khoảng, thiếu dấu tại mốc. CÓ biểu thức nên
+     phần mềm phải tự tính lại cả bảng ngay lúc dựng hình (dấu 0 ở đây là do
+     tính ra, không phải do bịa). */
+  bbt_tu_tinh_lai: {
+    type: "variation_table", label: "y", expression: "x^3-3x+2",
+    x: ["-\\infty", "-1", "1", "+\\infty"],
+    derivative: ["+", "-", "+"],
+    values: ["-\\infty", "4", "0", "+\\infty"],
+  },
+
+  /* V12.1 — bảng có tham số m: KHÔNG có biểu thức nên không tính lại được.
+     Thiếu dấu tại mốc thì phải ĐỂ TRỐNG. V12.0 tự ghi số 0 vào đó. */
+  bbt_khong_co_bieu_thuc: {
+    type: "variation_table", label: "y",
+    x: ["-\\infty", "m", "+\\infty"],
+    derivative: ["-", "+"],
+    values: ["+\\infty", "2m", "+\\infty"],
+  },
+  xet_dau_chi_dau_khoang: {
+    type: "sign_chart", label: "f(x)",
+    x: ["-\\infty", "-2", "3", "+\\infty"],
+    signs: ["+", "-", "+"],
+  },
+
   /* ---------- Đồ thị ---------- */
   do_thi_bac_ba: {
     type: "graph", expression: "x^3-3x+1",
@@ -255,14 +281,32 @@ export const SAMPLES = {
 
   /* Đúng đồ thị mà nút "Khảo sát hàm số" tự dựng ra — khung nhìn do phần mềm
      chọn, không phải do người viết mẫu chọn. */
+  /* V12.2: đúng thứ nút "Khảo sát hàm số" dựng ra — KHÔNG còn chấm và nhãn
+     điểm nào. Ba nhãn CĐ, CT, I trong vùng cao 4 đơn vị ở cỡ chữ 32 pt thì xếp
+     kiểu gì cũng chen nhau. */
   do_thi_tu_khao_sat: {
     type: "graph", expression: "(x^2+2*x-2)/(x-1)",
     xMin: -3, xMax: 5, yMin: -4, yMax: 10,
     asymptotes: [{ kind: "vertical", value: 1 }, { kind: "oblique", expression: "x+3" }],
+  },
+
+  /* V12.1 — tâm đối xứng của hàm bậc ba là điểm uốn, vẽ bằng vòng tròn rỗng
+     để không lẫn với chấm đặc của cực đại, cực tiểu. */
+  do_thi_tam_doi_xung: {
+    type: "graph", expression: "x^3-3*x+2",
+    xMin: -3, xMax: 3, yMin: -3, yMax: 7,
     points: [
-      { x: 0, y: 2, label: "CĐ(0; 2)", kind: "max" },
-      { x: 2, y: 6, label: "CT(2; 6)", kind: "min" },
+      { x: -1, y: 4, label: "CĐ(-1; 4)", kind: "max" },
+      { x: 1, y: 0, label: "CT(1; 0)", kind: "min" },
+      { x: 0, y: 2, label: "I(0; 2)", kind: "center" },
     ],
+  },
+
+  /* V12.1 — KHÔNG khai báo tiệm cận. Phần mềm phải tự tìm ra x = 1 và cắt nét
+     vẽ ở đó, thay vì nối hai nhánh bằng một đường dựng đứng giả. */
+  do_thi_tu_tim_tiem_can: {
+    type: "graph", expression: "(x+1)/(x-1)",
+    xMin: -4, xMax: 6, yMin: -4, yMax: 6,
   },
 
   /* ---------- Còn lại ---------- */

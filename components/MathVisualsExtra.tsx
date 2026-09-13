@@ -16,7 +16,7 @@ import type {
   VennVisual, TableVisual, QuizVisual,
 } from "@/lib/types";
 import { NL_HEAD, NL_ROW_H, NL_W, svgFontPx } from "@/lib/slides";
-import { beRongChu, chamNhau, chonChoDat, soVN, ticksFit, ticksFitDoc, type OChu } from "@/lib/plot";
+import { beRongChu, chamNhau, chonChoDat, gocChuan, gocRadian, soVN, ticksFit, ticksFitDoc, type OChu } from "@/lib/plot";
 import { MixedMath } from "./MathText";
 
 const PALETTE = ["#17324D", "#E4572E", "#0E8A72", "#F2A541", "#6C63A6", "#3C8DAD", "#B91C1C", "#1D4ED8"];
@@ -329,12 +329,9 @@ function ProbTree({ v }: { v: ProbTreeVisual }) {
 /* Đường tròn lượng giác                                               */
 /* ------------------------------------------------------------------ */
 
-function parseAngle(s: string): number {
-  const t = String(s).replace(/\\pi|π/g, "PI").replace(/\s/g, "");
-  const expr = t.replace(/PI/g, String(Math.PI));
-  const c = compileExpression(expr);
-  return c.ok ? c.eval(0) : Number(t) || 0;
-}
+/* parseAngle chuyển sang lib/plot.ts với tên gocRadian — xem lời giải thích
+   về lỗi "2\\pi/3 hoá 23,14" ở đó. Giữ tên cũ cho phần còn lại của tệp. */
+const parseAngle = gocRadian;
 
 function UnitCircle({ v }: { v: UnitCircleVisual }) {
   /**
@@ -403,11 +400,24 @@ function UnitCircle({ v }: { v: UnitCircleVisual }) {
       )}
 
       {v.arcs?.map((a2, i) => {
-        const from = parseAngle(a2.from), to = parseAngle(a2.to);
-        const big = Math.abs(to - from) > Math.PI ? 1 : 0;
+        /**
+         * Cung nghiệm luôn đi theo CHIỀU DƯƠNG từ `from` sang `to`.
+         *
+         * V12.0 lấy `Math.abs(to - from)` trên góc thô. Hai góc viết ở dạng
+         * khác nhau (ví dụ 2π/3 và −4π/3 là cùng một tia) cho hiệu số lớn hơn
+         * π nên cờ "cung lớn" bật lên, phần tô đi đường dài quanh gần hết
+         * đường tròn. Nay chuẩn hoá về [0; 2π) rồi đo đúng bề rộng cung theo
+         * chiều dương, nên cờ ấy chỉ bật khi cung THẬT SỰ lớn hơn nửa vòng.
+         */
+        const from = gocRadian(a2.from), to = gocRadian(a2.to);
+        const rong = gocChuan(to - from);
+        const big = rong > Math.PI ? 1 : 0;
+        const den = from + rong;   // luôn nằm cùng phía dương với `from`
         return (
-          <path key={i} d={`M ${cx} ${cy} L ${px(from).toFixed(1)} ${py(from).toFixed(1)} A ${R} ${R} 0 ${big} 0 ${px(to).toFixed(1)} ${py(to).toFixed(1)} Z`}
-                fill="#0E8A7233" stroke="#0E8A72" strokeWidth="1.8" />
+          <g key={i}>
+            <path d={`M ${cx} ${cy} L ${px(from).toFixed(1)} ${py(from).toFixed(1)} A ${R} ${R} 0 ${big} 0 ${px(den).toFixed(1)} ${py(den).toFixed(1)} Z`}
+                  fill="#0E8A7233" stroke="#0E8A72" strokeWidth="1.8" />
+          </g>
         );
       })}
 
@@ -431,6 +441,31 @@ function UnitCircle({ v }: { v: UnitCircleVisual }) {
       })}
       <circle cx={cx} cy={cy} r="4.5" fill="#263746" />
       <text x={cx - fs * 0.4} y={cy + fs} textAnchor="end" className="chart-tick svg-halo">O</text>
+
+      {/**
+        * TÊN CUNG NGHIỆM — chú giải ở lề dưới, NGOÀI đường tròn.
+        *
+        * lib/types.ts cho khai báo `arcs[].label` từ V11 mà hình chưa bao giờ
+        * vẽ ra: bài giải phương trình lượng giác tô một vệt màu rồi không nói
+        * vệt ấy là gì. Tôi thử viết vào giữa phần tô trước, nhưng chữ "Cung
+        * nghiệm" rộng hơn cả cung 60° nên nó tràn ra đè lên đường tròn và mũi
+        * chiều dương — đúng lỗi mà miền nghiệm đã phải sửa ở V12.0. Rồi tôi
+        * hạ xuống lề dưới, nó đè luôn vào nhãn B′. Góc TRÊN BÊN TRÁI là chỗ
+        * duy nhất thật sự trống: nhãn góc thấp nhất ở đó cũng còn cách hơn một
+        * dòng chữ.
+        */}
+      {(v.arcs ?? []).some((a2) => a2.label) && (
+        /* Cỡ chữ ĐÚNG fs, không thu nhỏ: 32 pt là mức sàn cứng của phần mềm
+             này, chú giải cũng là chữ học sinh phải đọc. */
+        <g className="chart-tick" style={{ fontSize: fs }}>
+          {(v.arcs ?? []).filter((a2) => a2.label).map((a2, i) => (
+            <g key={i} transform={`translate(${fs * 0.5}, ${fs * (0.9 + i * 1.05)})`}>
+              <rect x="0" y={-fs * 0.62} width={fs * 0.7} height={fs * 0.7} fill="#0E8A7255" stroke="#0E8A72" strokeWidth="1.6" />
+              <text x={fs * 1.05} y="0">{a2.label}</text>
+            </g>
+          ))}
+        </g>
+      )}
     </svg>
   );
 }
@@ -1199,6 +1234,15 @@ function Oxyz({ v }: { v: OxyzVisual }) {
             <circle cx={c[0]} cy={c[1]} r="4.5" fill="#1D4ED8" />
             <line x1={c[0]} y1={c[1]} x2={c[0] + R} y2={c[1]} stroke="#E4572E" strokeWidth="2.2" />
             <text x={c[0] + R / 2} y={c[1] - fs * 0.3} textAnchor="middle" className="chart-tick svg-halo" fill="#E4572E">R</text>
+            {/* TÊN TÂM — lib/types.ts cho khai báo `sphere.label` mà hình chưa
+                bao giờ vẽ: mặt cầu hiện ra có chấm tâm mà không có chữ I, nên
+                không viết được phương trình (x−1)²+(y−1)²+(z−1)²=4 dựa vào
+                hình. Ghi sang BÊN TRÁI tâm vì bán kính R đã chiếm bên phải. */}
+            {v.sphere.label && (
+              <text x={c[0] - fs * 0.4} y={c[1] - fs * 0.35} textAnchor="end" className="chart-tick svg-halo">
+                {`${v.sphere.label}(${soVN(v.sphere.x)}; ${soVN(v.sphere.y)}; ${soVN(v.sphere.z)})`}
+              </text>
+            )}
           </g>
         );
       })()}

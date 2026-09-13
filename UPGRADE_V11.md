@@ -2,10 +2,11 @@
 
 Bản này được viết đè lên mã nguồn V10 và **đã build + kiểm thử thành công**.
 
-**Bản hiện tại: V12.0** — `next build` sạch, 138/138 kiểm thử đạt, 26/26 loại
-hình Toán có chữ nền ≥ 32 pt khi in lên slide, 42/42 trường hợp trong bộ rà soát
-hình đều đạt, hai bài giảng mẫu xuất thử mở được bằng LibreOffice, không khối
-chữ nào tràn khung. Xem mục 5 → 9 để tự chạy lại mọi phép đo.
+**Bản hiện tại: V12.2** — `next build` sạch, 195/195 kiểm thử đạt, 26/26 loại
+hình Toán có chữ nền ≥ 32 pt khi in lên slide, 47/47 trường hợp trong bộ rà soát
+hình đều đạt và **cả 47 đều qua chính bộ kiểm định của phần mềm, không hình nào
+bị chặn xuất**, hai bài giảng mẫu xuất thử mở được bằng LibreOffice, không khối
+chữ nào tràn khung. Xem mục 5 → 11 để tự chạy lại mọi phép đo.
 
 ## 1. Tệp mới và tệp thay đổi
 
@@ -499,7 +500,269 @@ Bộ kiểm định hình chỉ kiểm được những gì **tính được**. 
 hợp lệ nhưng đề bài mô tả một quan hệ hình học khác (SA ⊥ đáy trong khi hình vẽ
 cho SA là cạnh bên) thì phần mềm không biết — chỗ đó vẫn cần mắt của giáo viên.
 
-## 10. Việc nên làm tiếp (chưa nằm trong bản này)
+## 10. V12.1 — Soi lại từng hình bằng mắt: tám lỗi nữa lộ ra
+
+V12.0 đã mở từng loại hình ra xem một lượt. V12.1 làm lại việc đó **sau khi
+sửa**, với những ca mà V12.0 chưa dựng thử: đồ thị không khai tiệm cận, bảng chỉ
+cho dấu trên khoảng, góc lượng giác có hệ số trước π, mặt cầu có tên tâm. Mỗi ca
+lộ ra một lỗi thật.
+
+### 10.1 Lỗi nặng nhất: góc 2π/3 bị vẽ thành 81,9°
+
+`parseAngle` thay chữ π bằng **chuỗi số** `"3.141592653589793"` rồi mới đem đi
+tính. Với `"2\pi/3"` phép thay ấy tạo ra `"23.141592653589793/3"` — bộ đọc biểu
+thức thấy **một** con số 23,14 chứ không thấy 2 nhân π. Hậu quả:
+
+| Viết vào | V12.0 vẽ ra | Đúng phải là |
+|---|---|---|
+| `2\pi/3` | 81,9° | 120° |
+| `3\pi/4` | 114,9° | 135° |
+| `5\pi/6` | 22,9° | 150° |
+
+Cung nghiệm sai theo: hai đầu cung lệch nhau hơn π nên cờ "cung lớn" của SVG bật
+lên, vệt tô đi đường dài quanh gần hết đường tròn rồi **tràn ra ngoài khung**.
+
+Nay hàm đọc góc chuyển sang `lib/plot.ts` (`gocRadian`) và giữ π ở dạng **tên
+hằng** `pi` — bộ đọc biểu thức đã biết hằng này và biết nhân ngầm. Bề rộng cung
+cũng được chuẩn hoá về `[0; 2π)` trước khi so, nên hai cách viết cùng một tia
+(2π/3 và −4π/3) không còn cho ra cung 338°.
+
+### 10.2 Đồ thị: tự dò cả tiệm cận NGANG, không chỉ tiệm cận đứng
+
+V12.1 (bản đầu) đã tự dò tiệm cận đứng nên đồ thị `(x+1)/(x−1)` bị **cắt** đúng
+chỗ x = 1 thay vì nối hai nhánh bằng một đường dựng đứng giả. Nhưng đường y = 1
+thì không có — mà SGK vẽ hàm nhất biến là luôn vẽ **cả hai** tiệm cận. Nay
+`detectHorizontalAsymptote()` dò bằng số: lấy giá trị ở hai đầu ±10³…±10⁶, chỉ
+nhận khi hai đầu cùng hữu hạn, cùng tiến về một số, và số đó không trùng trục Ox
+(trục đã vẽ rồi, kẻ thêm chỉ gây rối). Thà không vẽ còn hơn vẽ sai:
+
+| Hàm số | Kết luận |
+|---|---|
+| `(x+1)/(x-1)` | y = 1 |
+| `(2x+3)/(x-1)` | y = 2 |
+| `(x^2+1)/(x^2-1)` | y = 1 |
+| `(x^2+2x-2)/(x-1)` | không có (đây là tiệm cận **xiên**) |
+| `atan(x)` | không kết luận (hai đầu khác nhau) |
+| `1/x` | không kẻ (y = 0 trùng trục Ox) |
+
+### 10.3 Nhãn điểm phải đứng cạnh **chấm của mình**
+
+V12.0 chỉ đẩy nhãn theo chiều dọc. Với đồ thị `(x²+2x−2)/(x−1)` — ba nhãn CĐ, CT
+và tâm đối xứng I gần nhau — nhãn `CĐ(0; 2)` bị đẩy lên ba dòng, đứng **ngay
+cạnh chấm cực tiểu (2; 6)**; ai đọc cũng tưởng chấm xanh là CĐ(0; 2). Nay chỗ
+đặt được **xếp theo giá** = khoảng cách tới chấm + tiền phạt cho chỗ trái quy
+ước, rồi chọn chỗ rẻ nhất còn trống, nên chỗ sát chấm được thử trước chỗ xa — kể
+cả khi nó nằm ngang thay vì nằm trên. Bốn điều kiện mới:
+
+1. **Không đè trục hoành**: `CT(1; 0)` của y = x³−3x+2 từng nhảy sang ngang chấm
+   — mà chấm nằm ngay trên trục, nên đường trục kẻ gạch đôi cả dòng chữ.
+2. **Cùng phía trục với chấm của nó**: `CT(1; −1)` của y = x³−3x+1 từng được đặt
+   phía **trên** trục trong khi chấm nằm dưới trục, giữa nhãn và chấm có cả một
+   đường trục chắn qua.
+3. **Đè đường cong là một khoản tiền phạt, không phải một lệnh cấm.** Cấm hẳn thì
+   nhãn bị đẩy ra xa; nhãn đứng xa chấm là lỗi **nặng hơn** nhãn chạm đường cong
+   (chữ có viền trắng nên vẫn đọc được). Hai cái được cân trên cùng một bàn cân.
+4. **Số trên trục bị chấm đè thì hạ xuống một dòng.** Đồ thị y = x³−3x+1 khung
+   [−4; 4] có cực tiểu (1; −1) rơi đúng hàng số của trục hoành, chấm xanh trùm
+   mất số "1" — mà "1" chính là hoành độ cần đọc.
+
+### 10.4 Không bịa số 0, và vẽ vạch "|" bằng nét
+
+- Bảng biến thiên và bảng xét dấu: khi mảng dấu chỉ có dấu trên **khoảng**
+  (n−1 ô), V12.0 tự ghi số 0 vào **mọi** mốc. Với hàm phân thức thì mốc giữa là
+  điểm **không xác định**, không phải nghiệm — ghi 0 ở đó là dạy sai. Nay để
+  trống, và bảng nào có `expression` thì phần mềm **tự tính lại cả bảng ngay lúc
+  vẽ**, không chờ bấm "Tự sửa".
+- Dấu `|` và `||` nay vẽ bằng **nét**, không bằng chữ: chữ "|" của phông Times
+  chỉ dày khoảng 2 px trong khung vẽ, thu xuống cỡ slide rồi chiếu lên tường thì
+  gần như mất hẳn — mà đúng chỗ đó lại phân biệt "không phải nghiệm của dòng
+  này" với "bằng 0".
+- Ở bảng biến thiên, chữ "‖" giữa hai vạch đôi đã **bỏ**: vạch đôi vẽ bằng nét
+  xuyên suốt bảng rồi, kẹp thêm một sợi chữ mảnh vào giữa chỉ làm bẩn.
+
+### 10.5 Tâm đối xứng — thứ SGK luôn đánh dấu mà V12.0 bỏ quên
+
+`Khảo sát hàm số` nay tự tìm và vẽ tâm đối xứng I bằng **vòng tròn rỗng** (nó
+không thuộc đồ thị của hàm phân thức, chấm đặc là nói sai):
+
+| Hàm số | Tâm |
+|---|---|
+| `(x+1)/(x-1)` | I(1; 1) — giao hai tiệm cận |
+| `(x^2+2x-2)/(x-1)` | I(1; 4) — trên tiệm cận xiên |
+| `x^3-3x+2` | I(0; 2) — điểm uốn |
+| `x^2-4x+3`, `x^4-2x^2` | không có |
+
+### 10.6 Ba trường đã khai báo mà hình chưa bao giờ vẽ
+
+`lib/types.ts` cho khai báo, phần mềm nhận, rồi **bỏ im lặng** — đúng loại lỗi
+`showParallelogram` của V12.0:
+
+- `graph.shade.label` — bài diện tích hình phẳng tô vùng rồi không có chữ **S**
+  để chỉ vào mà nói.
+- `oxyz.sphere.label` — mặt cầu hiện ra có chấm tâm mà không có chữ **I**, nên
+  không viết được phương trình `(x−1)²+(y−1)²+(z−1)² = 4` dựa vào hình.
+- `unit_circle.arcs[].label` — bài giải phương trình lượng giác tô một vệt màu
+  rồi không nói vệt ấy là gì. (Viết vào giữa cung thì chữ "Cung nghiệm" rộng hơn
+  cả cung 60°, nên chú giải nằm ở góc trên bên trái, ngoài đường tròn.)
+
+### 10.7 Dấu phẩy Việt Nam
+
+- **Dãy số trên trục đồ thị**: đang in "4.5" và "1.5" kiểu Anh, trong khi biểu
+  đồ hộp và biểu đồ cột đã ghi đúng "5,5" từ V12.0. Nay dùng chung `soVN()`.
+- **Sơ đồ cây**: `auditTree` gọi `Number("0,6")` → `NaN` → `|| 0` → 0, nên sơ đồ
+  ghi **đúng** kiểu Việt Nam ("0,6" và "0,4") bị báo *"tổng xác suất nhánh cấp 1
+  bằng 0,000"*. Chính ô hướng dẫn của phần mềm dạy giáo viên viết dấu phẩy, rồi
+  bộ kiểm định lại bắt lỗi cách viết ấy — đó là lỗi của phần mềm.
+
+### 10.8 Bộ kiểm định nói cùng một điều với bộ dựng hình
+
+Ba chỗ bộ kiểm định tự mâu thuẫn với phần mềm, tìm ra bằng `scripts/audit-samples.mjs`:
+
+| Mã | V12.0 | V12.1 |
+|---|---|---|
+| `BBT_DERIVATIVE_LENGTH`, `BBT_SIGN_MISMATCH` | **lỗi chặn xuất** cho bảng mà chính phần mềm đã tự tính lại và vẽ đúng | hạ xuống cảnh báo, thêm `BBT_DA_TU_TINH_LAI` nói rõ việc đã làm — **vẫn giữ nguyên lời chẩn đoán chi tiết** |
+| `SOLID_LABELS` | hình nón đỉnh S bị đòi "cần 5 tên nhưng có 1" | chỉ đếm tên với khối có đỉnh đa giác |
+| `GRAPH_ASYMPTOTE` | "chưa vẽ đường tiệm cận" — trong khi phần mềm đã tự vẽ | "phần mềm đã tự vẽ đường này trên hình" |
+
+Thêm một phép kiểm mới: `OXYZ_TRUNG_NHAN` — khai cả `sphere.label` lẫn một điểm
+cùng tên ở đúng tâm mặt cầu thì hai nhãn viết đè lên nhau thành khối chữ không
+đọc được. Đây là lỗi tôi nhìn thấy trong **ảnh dựng thử của chính mình**.
+
+### 10.9 Bịt lỗ hổng trong chính bộ kiểm chứng
+
+Hai bộ đo đọc bundle ở `/tmp` mà **không tự dựng lại** — phải gõ lệnh `esbuild`
+bằng tay trước khi đo. Tôi quên một lần, bộ đo đọc bundle cũ, và tôi ngồi **xem
+ảnh của bản trước rồi tưởng là bản mới**: kết luận "vòng tròn rỗng chưa chạy" và
+"tiệm cận chưa vẽ" đều sai. Nói sai còn tệ hơn không nói. Nay
+`scripts/measure-visuals.mjs` và `scripts/build-sample-pptx.mjs` tự dựng bundle
+mỗi lần chạy, nên không còn khe hở đó.
+
+Và `scripts/audit-samples.mjs` (mới) đưa **cả 47 hình mẫu qua chính bộ kiểm
+định** — thứ mà trước đây không ai chạy. Ba lỗi ở mục 10.7–10.8 lộ ra ngay lần
+chạy đầu tiên.
+
+### 10.10 Tự chạy lại
+
+```bash
+npx tsc -p tsconfig.json          # phải dùng tsconfig CỦA DỰ ÁN (strict: false)
+npm run build
+node tests.mjs                    # 188 kiểm thử
+SAMPLES=hinh node scripts/measure-visuals.mjs   # 47 hình, tự dựng bundle
+node scripts/measure-visuals.mjs                # 26 loại, đo cỡ chữ
+node scripts/audit-samples.mjs                  # 47 hình qua bộ kiểm định
+SAMPLES=mot node scripts/audit-samples.mjs
+node scripts/shoot-editor.mjs     # cần `npx next start -p 3123` chạy sẵn
+LESSON=bai4 OUT=bai4_V12_1 node scripts/build-sample-pptx.mjs
+python3 scripts/check-pptx.py
+```
+
+### 10.11 Còn lại, nói thẳng
+
+- **Miền nghiệm**: nhãn đỉnh chỉ đổi được **chiều dọc**, chưa sang trái/phải như
+  đồ thị đã làm ở mục 10.3. Nhãn `O(0; 0)` vì thế trôi vào giữa vùng tô.
+- **Hệ trục Oxyz**: dãy số trên ba trục xếp hơi chen chúc quanh gốc; hình cũng
+  chưa dùng hết bề ngang khung.
+- **Chữ tham số**: giá trị dạng chữ ("m", "2m") trong bảng biến thiên in đứng,
+  chưa in nghiêng như quy ước Toán.
+
+## 11. V12.2 — Đồ thị bỏ hẳn chấm và nhãn điểm
+
+Thầy Dũng khoanh đỏ hai hình V12.1 và viết: *"bỏ kí hiệu các điểm I(1;4),
+CT(2;6), CĐ(0;2) và các dấu chấm của CT, I, CĐ vì nhìn vào nó rối mắt và chấm
+cũng không đúng vị trí!"*
+
+### 11.1 Đo trước đã: chấm có sai vị trí không?
+
+Không. Tôi dựng lại hình rồi đo toạ độ từng chấm trong khung vẽ:
+
+| Điểm | Toạ độ phải có | Toạ độ vẽ ra | Lệch |
+|---|---|---|---|
+| CĐ(0; 2) | (358,50; 219,43) | (358,50; 219,43) | 0,0000 px |
+| CT(2; 6) | (541,50; 151,71) | (541,50; 151,71) | 0,0000 px |
+| I(1; 4) | (450,00; 185,57) | (450,00; 185,57) | 0,0000 px |
+
+Nhưng **đúng toạ độ không có nghĩa là hình dễ nhìn**, và cảm giác "chấm sai vị
+trí" của thầy có nguyên nhân đo được:
+
+> Khung nhìn của hàm này cao **14 đơn vị** trên một khung vẽ cao 333 px, tức
+> **1 đơn vị ≈ 17 px**. Cỡ chữ sàn của phần mềm là **36 px**. Vậy mỗi nhãn
+> **cao hơn hai đơn vị của trục**. Ba nhãn nằm trong một vùng cao 4 đơn vị thì
+> xếp kiểu gì cũng phải chen nhau, và nhãn buộc phải lệch khỏi chấm — mà nhãn
+> lệch khỏi chấm thì người đọc lấy **vị trí chữ** làm vị trí điểm.
+
+Đây là giới hạn hình học, không phải lỗi đặt nhãn: V12.1 đã xếp nhãn theo giá
+(gần chấm nhất thắng) mà vẫn không đủ chỗ. Cách chữa duy nhất còn lại là bỏ
+chúng khỏi hình.
+
+### 11.2 Bỏ chấm, KHÔNG bỏ số liệu
+
+Các con số không mất đi, chỉ chuyển chỗ:
+
+| Thông tin | V12.1 | V12.2 |
+|---|---|---|
+| Toạ độ cực trị | chấm + nhãn trên đồ thị (và trong bảng biến thiên, và ở slide 1) | bảng biến thiên, slide 1, **và thêm một dòng chữ ngay trên slide đồ thị** |
+| Tâm đối xứng | vòng tròn rỗng + nhãn I(…) | dòng chữ "Tâm đối xứng: I(1; 4) — giao của hai đường tiệm cận" |
+
+Slide đồ thị của `(x²+2x−2)/(x−1)` nay đọc:
+
+```
+Đồ thị đi qua điểm cực đại (0; 2) và điểm cực tiểu (2; 6).
+Tiệm cận đứng: x = 1.
+Tiệm cận xiên: y = x + 3.
+Tâm đối xứng: I(1; 4) — giao của hai đường tiệm cận.
+```
+
+Hình chỉ còn **đường cong và hai đường tiệm cận** — đúng thứ cần nhìn.
+
+Dòng liệt kê cực trị nối theo lối tiếng Việt: hai điểm dùng "và", từ ba điểm
+trở lên dùng dấu phẩy rồi mới "và" (`x⁴ − 2x²` ra "điểm cực tiểu (−1; −1),
+điểm cực đại (0; 0) **và** điểm cực tiểu (1; −1)").
+
+### 11.3 Ba chỗ cùng phải đổi theo
+
+1. **`lib/khaosat.ts`** — nút "Khảo sát hàm số" không sinh `points` nữa.
+2. **`lib/prompt.ts`** — thêm một dòng bảo AI đừng chấm cực trị lên đồ thị, kèm
+   lý do bằng con số (nhãn cao hơn hai đơn vị của trục). Chỉ dùng `points` khi
+   đề bài hỏi thẳng về **một** điểm cụ thể.
+3. **`lib/visualguide.ts`** — ô hướng dẫn bên cạnh ô dữ liệu nói rõ điều đó, và
+   ví dụ mẫu "Chèn mẫu" của loại `graph` không còn điểm nào.
+
+Trường `points` **vẫn còn** trong `lib/types.ts` và bộ dựng hình vẫn vẽ: thầy
+nào muốn đánh dấu một điểm cụ thể thì tự khai trong ô dữ liệu hình.
+
+### 11.4 Thêm một bài mẫu để đo đúng chỗ vừa sửa
+
+`scripts/lesson-khaosat.mjs` (mới) dựng bài giảng từ **chính nút Khảo sát hàm
+số** cho bốn hàm — phân thức bậc hai trên bậc nhất, nhất biến, bậc ba, trùng
+phương — rồi xuất PowerPoint và đo lại. Hai bài mẫu cũ mô phỏng kết quả của AI,
+không chạy qua `khaosat.ts`, nên không phát hiện được chuyện chữ dài thêm mà
+tràn khung.
+
+Nhân tiện: `scripts/check-pptx.py` mặc định mở `bai_giang_V11_6.pptx`. Chạy
+`python3 scripts/check-pptx.py` mà quên đưa đường dẫn thì **đo nhầm tệp cũ**.
+Luôn ghi rõ tệp:
+
+```bash
+LESSON=khaosat OUT=khaosat_V12_2 node scripts/build-sample-pptx.mjs
+python3 scripts/check-pptx.py .measure/khaosat_V12_2.pptx
+```
+
+### 11.5 Tự chạy lại
+
+```bash
+npx tsc -p tsconfig.json
+npm run build
+node tests.mjs                                   # 195 kiểm thử
+SAMPLES=hinh node scripts/measure-visuals.mjs    # 47 hình
+node scripts/measure-visuals.mjs                 # 26 loại
+node scripts/audit-samples.mjs
+SAMPLES=mot node scripts/audit-samples.mjs
+node scripts/shoot-editor.mjs                    # cần next start -p 3123
+LESSON=khaosat OUT=khaosat_V12_2 node scripts/build-sample-pptx.mjs
+python3 scripts/check-pptx.py .measure/khaosat_V12_2.pptx
+```
+
+## 12. Việc nên làm tiếp (chưa nằm trong bản này)
 
 1. Bật `"strict": true` trong `tsconfig.json` rồi sửa dần các cảnh báo.
 2. Thêm ESLint config (`next lint` hiện không có cấu hình).

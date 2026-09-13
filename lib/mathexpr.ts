@@ -389,3 +389,52 @@ export function detectPoles(raw: string, xMin: number, xMax: number, samples = 9
   }
   return poles.sort((a, b) => a - b);
 }
+
+/**
+ * Dò TIỆM CẬN NGANG bằng số: y = L khi f(x) → L ở cả hai đầu.
+ *
+ * Vì sao cần: bản V12.1 đầu đã tự dò được tiệm cận ĐỨNG nên đồ thị
+ * (x+1)/(x−1) bị cắt đúng chỗ, nhưng đường y = 1 thì không có — mà SGK vẽ hàm
+ * nhất biến là luôn vẽ cả hai tiệm cận. Dò được một nửa rồi bỏ nửa kia thì
+ * hình vẫn chưa đúng lối trình bày của môn Toán.
+ *
+ * Thà không vẽ còn hơn vẽ sai, nên chỉ nhận khi:
+ *  - hai đầu cùng hữu hạn và bằng nhau (một phía thôi thì không kết luận);
+ *  - dãy giá trị thật sự đang tiến về L (bước sau gần L hơn bước trước nhiều);
+ *  - L không trùng trục hoành (trục Ox đã vẽ rồi, kẻ thêm chỉ gây rối).
+ */
+export function detectHorizontalAsymptote(raw: string): number | null {
+  const c = compileExpression(raw);
+  if (!c.ok) return null;
+
+  /** Giá trị ở một phía, cùng với mức độ "đã đứng yên". */
+  const phia = (dau: 1 | -1): { L: number; lui: number } | null => {
+    const v = [1e3, 1e4, 1e5, 1e6].map((t) => c.eval(dau * t));
+    if (!v.every((y) => Number.isFinite(y))) return null;
+    const truoc = Math.abs(v[2] - v[1]);
+    const sau = Math.abs(v[3] - v[2]);
+    // Đang tiến về một số: sai khác thu nhỏ rõ rệt, và đã rất nhỏ.
+    if (!(sau <= truoc * 0.5 + 1e-12) || sau > 1e-3) return null;
+    return { L: v[3], lui: sau };
+  };
+
+  const am = phia(-1), duong = phia(1);
+  if (!am || !duong) return null;
+  /**
+   * Hai đầu chỉ cần GẦN nhau, không cần bằng nhau tới 1e-6.
+   *
+   * Lần đầu tôi để ngưỡng 1e-6 và hàm (x+1)/(x−1) bị loại: ở x = ±10⁶ hai đầu
+   * là 1,000002 và 0,999998, lệch nhau 4·10⁻⁶. Chúng còn đang tiến về 1 chứ
+   * chưa tới, nên đòi bằng nhau tới 1e-6 là đòi một điều sai bản chất.
+   * Bù lại, lấy TRUNG BÌNH hai đầu thì phần dư c/x của hai bên triệt tiêu gần
+   * hết: (1,000002 + 0,999998)/2 = 1,000000 — chính xác hơn cả từng đầu.
+   */
+  if (Math.abs(am.L - duong.L) > 1e-3 * Math.max(1, Math.abs(am.L))) return null;
+
+  const L = (am.L + duong.L) / 2;
+  // Làm tròn về số "đẹp" để ghi y = 1 chứ không phải y = 1,000002.
+  const gon = Math.round(L * 1e6) / 1e6;
+  const L2 = Math.abs(gon - Math.round(gon)) < 1e-6 ? Math.round(gon) : gon;
+  if (Math.abs(L2) < 1e-9) return null; // trùng trục Ox
+  return L2;
+}

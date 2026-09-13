@@ -85,7 +85,7 @@ export const VISUAL_GUIDE: Record<string, VisualGuide> = {
     intro: "Bảng xét dấu một biểu thức, hoặc nhiều dòng tử – mẫu – thương như SGK.",
     fields: [
       { name: "x", required: true, desc: "Các mốc trên hàng x, kể cả -\\infty và +\\infty." },
-      { name: "signs", required: true, desc: "Dấu của biểu thức, xen kẽ dấu và nghiệm: 2n−3 ô với n mốc x. Bỏ qua nếu dùng rows." },
+      { name: "signs", required: true, desc: "Xen kẽ DẤU trên khoảng và GIÁ TRỊ tại mốc: 2n−3 ô với n mốc x. Ghi \"0\" chỉ khi CHÍNH HÀNG ĐÓ bằng 0 tại mốc; ghi \"||\" nếu không xác định; ghi \"+\" hoặc \"−\" nếu hàng đó khác 0 tại mốc. Bỏ qua nếu dùng rows." },
       { name: "label", required: false, desc: "Tên biểu thức hiện ở cột trái, ví dụ \"f(x)\"." },
       { name: "rows", required: false, desc: "Nhiều dòng xét dấu, mỗi dòng có label và signs. Dùng thay cho signs." },
     ],
@@ -93,20 +93,25 @@ export const VISUAL_GUIDE: Record<string, VisualGuide> = {
       type: "sign_chart",
       x: ["-\\infty", "-2", "1", "+\\infty"],
       rows: [
-        { label: "x - 1", signs: ["-", "0", "-", "0", "+"] },
-        { label: "x + 2", signs: ["-", "0", "+", "0", "+"] },
+        // Tại x = -2 chỉ có (x + 2) bằng 0; hàng (x - 1) vẫn âm nên ghi dấu, không ghi 0.
+        { label: "x - 1", signs: ["-", "-", "-", "0", "+"] },
+        { label: "x + 2", signs: ["-", "0", "+", "+", "+"] },
         { label: "f(x)", signs: ["+", "0", "-", "0", "+"] },
       ],
     },
+    notes: [
+      "Ở MỘT MỐC, không được ghi 0 cho tất cả các hàng. Chỉ hàng có nhân tử bằng 0 tại mốc đó mới ghi 0 — đây là lỗi hay gặp nhất khi lập bảng xét dấu tích, thương.",
+      "Nên ghi đủ 2n−3 ô trong signs. Ghi thiếu (chỉ n−1 dấu trên khoảng) thì ô tại mốc để trống, phần mềm KHÔNG tự điền 0 vì điền là có thể biến một điểm không xác định thành nghiệm.",
+    ],
   },
 
   graph: {
-    intro: "Đồ thị hàm số trên hệ trục Oxy, kèm tiệm cận và điểm cực trị.",
+    intro: "Đồ thị hàm số trên hệ trục Oxy, kèm tiệm cận. Mặc định KHÔNG chấm điểm nào lên hình.",
     fields: [
       { name: "expression", required: true, desc: "Hàm số cần vẽ, viết như máy tính: 50*x/(100-x), x^3-3*x, sqrt(x+1), sin(x), ln(x)." },
       { name: "xMin, xMax, yMin, yMax", required: true, desc: "Khung nhìn. Đặt sao cho phần đáng xem nằm trong khung." },
       { name: "asymptotes", required: false, desc: "Tiệm cận: kind là \"vertical\" hoặc \"horizontal\" (kèm value), hoặc \"oblique\" (kèm expression)." },
-      { name: "points", required: false, desc: "Điểm cần đánh dấu: x, y, label, và kind là \"max\", \"min\", \"inflection\", \"root\" hoặc \"plain\"." },
+      { name: "points", required: false, desc: "Điểm cần đánh dấu: x, y, label, và kind là \"max\", \"min\", \"inflection\", \"root\", \"plain\" hoặc \"center\" (tâm đối xứng, vẽ vòng tròn rỗng). DÙNG DÈ: mỗi nhãn cao hơn hai đơn vị của trục, ba nhãn gần nhau là hình rối." },
       { name: "expressions", required: false, desc: "Các đường vẽ THÊM trên cùng hệ trục, mỗi đường có expression, label, color, dashed." },
       { name: "shade", required: false, desc: "Tô miền giữa đồ thị và trục Ox (dạy tích phân): from, to, label." },
       { name: "xLabel, yLabel", required: false, desc: "Tên hai trục. Viết ngắn, ví dụ \"p (%)\" và \"C(p) (triệu đồng)\"." },
@@ -116,14 +121,13 @@ export const VISUAL_GUIDE: Record<string, VisualGuide> = {
       expression: "(x^2+2x-2)/(x-1)",
       xMin: -6, xMax: 8, yMin: -10, yMax: 14,
       asymptotes: [{ kind: "vertical", value: 1 }, { kind: "oblique", expression: "x+3" }],
-      points: [
-        { x: 0, y: 2, label: "CĐ(0; 2)", kind: "max" },
-        { x: 2, y: 6, label: "CT(2; 6)", kind: "min" },
-      ],
     },
     notes: [
       "Dấu nhân nên viết rõ: 2*x an toàn hơn 2x, và 50*x/(100-x) an toàn hơn 50x/(100-x).",
       "Hàm chính ở expression LUÔN được vẽ; expressions chỉ là các đường vẽ thêm.",
+      "Đừng chấm cực đại, cực tiểu lên đồ thị: toạ độ của chúng đã có trong bảng biến thiên và trong phần chữ. Chữ trên slide cao 32 pt trong khi một đơn vị của trục thường chỉ khoảng 17 px, nên mỗi nhãn chiếm hơn hai đơn vị chiều cao — vài nhãn gần nhau là hình rối ngay.",
+      'Nếu thật sự cần chỉ MỘT điểm (ví dụ giao điểm với trục tung) thì mới dùng points; kind: "center" vẽ vòng tròn RỖNG vì tâm đối xứng không thuộc đồ thị của hàm phân thức.',
+      "Tiệm cận đứng VÀ tiệm cận ngang đều được tự dò từ expression nên không khai vẫn có; vẫn nên khai trong asymptotes cho dữ liệu bài giảng tường minh.",
     ],
   },
 

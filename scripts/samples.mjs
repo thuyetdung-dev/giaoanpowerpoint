@@ -60,9 +60,12 @@ export const SAMPLES = {
   bang_xet_dau_3: {
     type: "sign_chart",
     x: ["-\\infty", "-2", "1", "+\\infty"],
+    /* Tại MỖI mốc chỉ dòng nào THẬT SỰ bằng 0 mới ghi "0"; dòng còn lại ghi
+       "|" theo lối SGK. Mẫu cũ ghi "0" cho cả ba dòng ở cả hai mốc, tức là nói
+       x − 1 = 0 tại x = −2 — sai, và bộ kiểm định V12.1 bắt được. */
     rows: [
-      { label: "x - 1", signs: ["-", "0", "-", "0", "+"] },
-      { label: "x + 2", signs: ["-", "0", "+", "0", "+"] },
+      { label: "x - 1", signs: ["-", "|", "-", "0", "+"] },
+      { label: "x + 2", signs: ["-", "0", "+", "|", "+"] },
       { label: "f(x)", signs: ["+", "0", "-", "0", "+"] },
     ],
   },

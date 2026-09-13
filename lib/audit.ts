@@ -171,7 +171,33 @@ function auditVisual(v: Visual, section: number, visual: number, out: AuditItem[
   }
 }
 
+/**
+ * BỘ KIỂM ĐỊNH PHẢI NÓI CÙNG MỘT ĐIỀU VỚI BỘ DỰNG HÌNH (V12.1).
+ *
+ * Từ V12.1, bảng nào CÓ `expression` thì lúc vẽ phần mềm tự tính lại cả bảng
+ * và vẽ theo bản tính được (components/MathVisuals.tsx). Vậy nếu vẫn báo "lỗi
+ * chặn xuất" cho số liệu cũ thì phần mềm tự mâu thuẫn: nó chặn thầy xuất một
+ * hình mà chính nó vẽ ĐÚNG.
+ *
+ * Cách xử lý: VẪN soi từng chỗ sai và nói rõ sai ở đâu — lời chẩn đoán chính
+ * xác mới giúp được thầy — nhưng hạ mọi "lỗi chặn xuất" xuống mức cảnh báo, và
+ * nói thêm một câu cho biết phần mềm đã tự tính lại.
+ */
 function auditVariation(v: VariationVisual, section: number, visual: number, out: AuditItem[]) {
+  const giai = v.expression ? solveVariationTable(v.expression) : null;
+  const tuTinhLai = !!giai?.ok && !tableMatches(v, giai);
+  const rieng: AuditItem[] = [];
+  auditVariationChiTiet(v, section, visual, rieng);
+  if (!tuTinhLai) { rieng.forEach((it) => out.push(it)); return; }
+  out.push({
+    level: "warning", code: "BBT_DA_TU_TINH_LAI", section, visual,
+    message: `Số liệu bảng không khớp với y = ${v.expression}; khi vẽ và khi xuất, phần mềm dùng bảng TỰ TÍNH LẠI từ biểu thức.`,
+    fix: 'Bấm "Tự sửa" để ghi bảng đã tính vào dữ liệu bài, hoặc sửa lại biểu thức nếu biểu thức mới là chỗ sai.',
+  });
+  rieng.forEach((it) => out.push(it.level === "error" ? { ...it, level: "warning" } : it));
+}
+
+function auditVariationChiTiet(v: VariationVisual, section: number, visual: number, out: AuditItem[]) {
   const at = { section, visual };
   const n = v.x?.length ?? 0;
   if (n < 2) { out.push({ level: "error", code: "BBT_X", message: "Bảng biến thiên cần ít nhất 2 mốc x.", ...at }); return; }
@@ -179,8 +205,23 @@ function auditVariation(v: VariationVisual, section: number, visual: number, out
     out.push({ level: "error", code: "BBT_VALUE_LENGTH", ...at, message: `Hàng y có ${v.values?.length ?? 0} giá trị nhưng có ${n} mốc x.`, fix: "Mỗi mốc x phải có đúng một giá trị hoặc giới hạn của y." });
 
   const expected = 2 * n - 3;
-  if ((v.derivative?.length ?? 0) !== expected)
-    out.push({ level: "error", code: "BBT_DERIVATIVE_LENGTH", ...at, message: `Hàng y′ cần ${expected} ô (xen kẽ dấu và nghiệm) nhưng đang có ${v.derivative?.length ?? 0}.` });
+  const soDau = v.derivative?.length ?? 0;
+  if (soDau !== expected) {
+    /* Cho đủ dấu trên KHOẢNG mà thiếu ô tại MỐC (n−1 ô thay vì 2n−3) là ca
+       riêng: bảng vẫn vẽ được, chỉ trống ô mốc. Bảng có tham số m thì không
+       tính lại được nên đây là lựa chọn hợp lệ của thầy — cảnh báo, đừng chặn
+       xuất. Thiếu kiểu khác thì vẫn là lỗi. */
+    const chiDauKhoang = soDau === n - 1 && n > 2;
+    out.push({
+      level: chiDauKhoang ? "warning" : "error", code: "BBT_DERIVATIVE_LENGTH", ...at,
+      message: chiDauKhoang
+        ? `Hàng y′ chỉ có dấu trên ${n - 1} khoảng, chưa có ô tại ${n - 2} mốc. Ô mốc sẽ để TRỐNG.`
+        : `Hàng y′ cần ${expected} ô (xen kẽ dấu và nghiệm) nhưng đang có ${soDau}.`,
+      fix: chiDauKhoang
+        ? 'Điền "0" tại mốc là nghiệm của y′, "||" tại mốc không xác định — xen kẽ dấu và mốc.'
+        : undefined,
+    });
+  }
 
   if ((v.derivative ?? []).some((d) => d === "?" || d === ""))
     out.push({ level: "error", code: "BBT_UNKNOWN_SIGN", ...at, message: "Còn ô dấu y′ chưa xác định (?). Không được xuất khi chưa điền đủ." });
@@ -342,12 +383,16 @@ function auditGraph(v: GraphVisual, section: number, visual: number, out: AuditI
       fix: "Nới rộng yMin/yMax cho khớp với giá trị thực của hàm số.",
     });
 
-  // tiệm cận đứng có thật nhưng chưa khai báo
+  /* Tiệm cận đứng có thật nhưng chưa khai báo.
+     Từ V12.1 phần mềm TỰ VẼ đường tiệm cận ấy, nên lời nhắc phải nói rõ là
+     hình đã có đủ — nói "chưa vẽ" thì thầy đi tìm một lỗi không tồn tại. */
   const poles = detectPoles(v.expression, v.xMin, v.xMax);
   const declared = new Set((v.asymptotes ?? []).filter((a) => a.kind === "vertical").map((a) => Math.round((a.value ?? 0) * 100)));
   poles.forEach((p) => {
     if (!declared.has(Math.round(p * 100)))
-      out.push({ level: "tip", code: "GRAPH_ASYMPTOTE", ...at, message: `Hàm số có tiệm cận đứng gần x ≈ ${p.toFixed(2)} nhưng chưa vẽ đường tiệm cận.` });
+      out.push({ level: "tip", code: "GRAPH_ASYMPTOTE", ...at,
+                message: `Hàm số có tiệm cận đứng x ≈ ${p.toFixed(2)}; phần mềm đã tự vẽ đường này trên hình.`,
+                fix: "Khai vào asymptotes nếu muốn ghi rõ phương trình tiệm cận trong dữ liệu bài." });
   });
 
   v.points?.forEach((q) => {
@@ -385,12 +430,22 @@ function auditBox(v: BoxPlotVisual, section: number, visual: number, out: AuditI
 }
 
 function auditTree(v: ProbTreeVisual, section: number, visual: number, out: AuditItem[]) {
+  /**
+   * DẤU PHẨY VIỆT NAM (V12.1).
+   *
+   * Bản cũ gọi Number("0,6") — ra NaN, rồi `|| 0` biến thành 0. Thành ra sơ đồ
+   * cây ghi ĐÚNG kiểu Việt Nam ("0,6" và "0,4") bị báo "tổng xác suất nhánh
+   * cấp 1 bằng 0,000". Chính ô hướng dẫn của phần mềm dạy thầy viết dấu phẩy,
+   * rồi bộ kiểm định lại bắt lỗi cách viết ấy — đó là lỗi của phần mềm, không
+   * phải của thầy. Dùng chung docXacSuat() với các phép kiểm V12.0.
+   */
   const num = (s: string) => {
     const t = String(s).replace(/\s/g, "");
-    const m = t.match(/^(-?\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);
-    if (m) return Number(m[1]) / Number(m[2]);
-    const p = Number(t.replace("%", ""));
-    return t.includes("%") ? p / 100 : p;
+    if (t.includes("%")) {
+      const p = docXacSuat(t.replace("%", ""));
+      return Number.isFinite(p) ? p / 100 : NaN;
+    }
+    return docXacSuat(t);
   };
   const sum = v.branches.reduce((a, b) => a + (num(b.p) || 0), 0);
   if (Math.abs(sum - 1) > 0.02)
@@ -829,7 +884,11 @@ function kiemHinhThem(v: Visual, at: { section: number; visual: number }, out: A
       if (ds.length) {
         const trung = ds.filter((x, i) => ds.indexOf(x) !== i);
         if (trung.length) loi("SOLID_DUP", `Tên đỉnh bị trùng: ${[...new Set(trung)].join(", ")}.`);
-        if (laChop && ds.length !== n && ds.length !== n + 1)
+        /* Hình nón chỉ có MỘT đỉnh, không có đa giác đáy, nên không thể đòi
+           n+1 tên: mẫu "hình nón đỉnh S" đang bị báo "cần 5 tên nhưng có 1".
+           Chỉ đếm tên với khối có đỉnh đa giác. */
+        const demTen = v.shape === "pyramid" || v.shape === "tetrahedron";
+        if (demTen && ds.length !== n && ds.length !== n + 1)
           canh("SOLID_LABELS", `Hình chóp ${n} cạnh đáy cần ${n + 1} tên nhưng đang có ${ds.length}.`,
                "Tên ĐẦU TIÊN là đỉnh chóp, đúng lối gọi S.ABCD — ví dụ S, A, B, C, D.");
         if (laLangTru && ds.length !== n && ds.length !== 2 * n)
@@ -864,6 +923,24 @@ function kiemHinhThem(v: Visual, at: { section: number; visual: number }, out: A
           loi("OXYZ_PLANE", `Mặt phẳng ${pl.label || i + 1} có a = b = c = 0 — không phải một mặt phẳng.`);
       });
       if (v.sphere && !(v.sphere.r > 0)) loi("OXYZ_SPHERE", "Mặt cầu có bán kính không dương.");
+      /**
+       * Khai cả `sphere.label` lẫn một điểm cùng tên ở ĐÚNG tâm mặt cầu thì
+       * phần mềm viết hai lần một chữ vào cùng một chỗ: "I(1; 1; 1)" và "I"
+       * chồng lên nhau thành một khối chữ không đọc được. Đây là lỗi tôi nhìn
+       * thấy trong ảnh dựng thử của chính mình, nên chắc chắn giáo viên cũng sẽ
+       * viết như vậy.
+       */
+      if (v.sphere?.label) {
+        const sp = v.sphere;
+        const trung = (v.points ?? []).find(
+          (q) => q.label === sp.label &&
+                 Math.abs(q.x - sp.x) < 1e-9 && Math.abs(q.y - sp.y) < 1e-9 && Math.abs(q.z - sp.z) < 1e-9,
+        );
+        if (trung)
+          canh("OXYZ_TRUNG_NHAN",
+               `Tâm mặt cầu và điểm "${sp.label}" cùng toạ độ, cùng tên nên hai nhãn viết đè lên nhau.`,
+               `Bỏ một trong hai: giữ điểm "${sp.label}" trong points, hoặc bỏ label của sphere.`);
+      }
       (v.vectors ?? []).forEach((vec, i) => {
         if (Math.abs(vec.x) < 1e-12 && Math.abs(vec.y) < 1e-12 && Math.abs(vec.z) < 1e-12)
           canh("OXYZ_VEC0", `Vectơ ${vec.label || i + 1} là vectơ không nên không vẽ được.`);

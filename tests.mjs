@@ -1,4 +1,4 @@
-import { compileExpression, detectPoles, numericDerivative } from "./_build/lib/mathexpr.js";
+import { compileExpression, detectHorizontalAsymptote, detectPoles, numericDerivative } from "./_build/lib/mathexpr.js";
 import { latexToUnicode, mixedLatexToUnicode } from "./_build/lib/latex.js";
 import { computeLevels } from "./_build/lib/bbt.js";
 import * as Lib from "./_build/lib/library.js";
@@ -7,7 +7,7 @@ import { auditLesson, repairLesson } from "./_build/lib/audit.js";
 import { buildDeck, outlineDeck } from "./_build/lib/slides.js";
 import { VISUAL_GUIDE, readVisualJson, sampleFor } from "./_build/lib/visualguide.js";
 import { VISUAL_LABEL } from "./_build/lib/themes.js";
-import { soVN, ticksFit, ticksFitDoc } from "./_build/lib/plot.js";
+import { gocChuan, gocRadian, soVN, ticksFit, ticksFitDoc } from "./_build/lib/plot.js";
 import { daoHam } from "./_build/lib/deriv.js";
 import { khaoSatHamSo } from "./_build/lib/khaosat.js";
 
@@ -412,7 +412,12 @@ eq("nhận ra tiệm cận đứng và tiệm cận xiên",
    [ks.sections[2].content.includes("x = 1"), ks.sections[2].content.includes("y = x + 3")], [true, true]);
 const gKS = ks.sections[2].visuals[0];
 eq("khung nhìn bám theo cực trị, không kéo tới vô cực", gKS.yMax <= 14 && gKS.yMin >= -8, true);
-eq("đồ thị có đủ hai điểm cực trị", gKS.points.length, 2);
+// V12.2: đồ thị KHÔNG còn chấm và nhãn điểm nào — thầy Dũng yêu cầu bỏ vì rối
+// mắt. Toạ độ không mất đi: chúng chuyển sang phần chữ của chính slide này.
+eq("đồ thị không đánh dấu điểm nào", (gKS.points ?? []).length, 0);
+eq("bù lại, chữ slide đồ thị nêu đủ hai cực trị",
+   [ks.sections[2].content.includes("điểm cực đại $(0; 2)$"),
+    ks.sections[2].content.includes("điểm cực tiểu $(2; 6)$")], [true, true]);
 // Bộ slide do khảo sát dựng ra phải TỰ NÓ vượt được bộ kiểm định.
 eq("bộ slide khảo sát không có lỗi chặn xuất",
    auditLesson({ title: "Khảo sát", sections: ks.sections }).filter((i) => i.level === "error"), []);
@@ -422,6 +427,155 @@ eq("hàm nhất biến: tiệm cận ngang y = 1",
    khaoSatHamSo("(x+1)/(x-1)").sections[2].content.includes("y = 1"), true);
 eq("biểu thức hỏng thì báo lỗi, không dựng slide bừa", khaoSatHamSo("alert(1)").ok, false);
 eq("ô trống thì nhắc nhập hàm số", khaoSatHamSo("  ").error.includes("Chưa nhập"), true);
+
+// --- V12.1: tâm đối xứng, thứ SGK luôn đánh dấu mà V12.0 bỏ quên ---
+// V12.2: tâm đối xứng nay nêu bằng CHỮ trên slide đồ thị, không chấm lên hình.
+const tamCua = (f) => {
+  const noiDung = khaoSatHamSo(f).sections?.[2]?.content ?? "";
+  const m = /\$I\(([^)]*)\)\$/.exec(noiDung);
+  return m ? `I(${m[1]})` : null;
+};
+eq("phân thức nhất biến: tâm là giao hai tiệm cận", tamCua("(x+1)/(x-1)"), "I(1; 1)");
+eq("bậc hai trên bậc nhất: tâm trên tiệm cận xiên", tamCua("(x^2+2*x-2)/(x-1)"), "I(1; 4)");
+eq("hàm trong ảnh thầy gửi", tamCua("(-x^2+x+1)/(x-2)"), "I(2; -3)");
+// Đa thức bậc ba: tâm đối xứng chính là ĐIỂM UỐN (y″ = 0).
+eq("bậc ba: điểm uốn là tâm đối xứng", tamCua("x^3-3*x+2"), "I(0; 2)");
+eq("bậc ba hệ số âm", tamCua("-x^3+3*x^2-1"), "I(1; 1)");
+// Không có thì KHÔNG bịa: parabol có trục đối xứng, không có tâm; bậc bốn cũng vậy.
+eq("parabol không có tâm đối xứng", tamCua("x^2-4*x+3"), null);
+eq("bậc bốn không có tâm đối xứng", tamCua("x^4-2*x^2"), null);
+eq("nêu điểm uốn bằng lời đúng chỗ",
+   khaoSatHamSo("x^3-3*x+2").sections[2].content.includes("Điểm uốn"), true);
+eq("phân thức thì nói là giao hai tiệm cận",
+   khaoSatHamSo("(x+1)/(x-1)").sections[2].content.includes("giao của hai đường tiệm cận"), true);
+// Tâm đối xứng tuy không chấm lên hình nhưng vẫn phải NẰM TRONG khung nhìn:
+// thầy đọc "tâm đối xứng I(1; 4)" rồi nhìn vào hình mà không thấy chỗ ấy đâu
+// thì câu chữ và hình vẽ đá nhau.
+[["(x+1)/(x-1)", 1, 1], ["(x^2+2*x-2)/(x-1)", 1, 4], ["x^3-3*x+2", 0, 2]].forEach(([f, cx, cy]) => {
+  const g = khaoSatHamSo(f).sections[2].visuals[0];
+  eq(`tâm đối xứng nằm trong khung nhìn: ${f}`,
+     cx >= g.xMin && cx <= g.xMax && cy >= g.yMin && cy <= g.yMax, true);
+});
+// Và cả bộ slide vẫn không có chấm nào trên đồ thị.
+["(x+1)/(x-1)", "(x^2+2*x-2)/(x-1)", "x^3-3*x+2", "x^2-4*x+3"].forEach((f) => {
+  eq(`không đánh dấu điểm: ${f}`,
+     (khaoSatHamSo(f).sections[2].visuals[0].points ?? []).length, 0);
+});
+
+// --- V12.1: ví dụ mẫu bảng xét dấu không được ghi 0 cho MỌI hàng tại một mốc ---
+// Đây là lỗi lập bảng hay gặp nhất, mà chính ví dụ mẫu của V12.0 lại mắc.
+const mauXetDau = VISUAL_GUIDE.sign_chart.sample;
+const soMoc = mauXetDau.x.length;
+for (let k = 1; k < soMoc - 1; k++) {
+  const oTaiMoc = mauXetDau.rows.map((r) => r.signs[2 * k - 1]);
+  eq(`mẫu xét dấu: tại mốc ${mauXetDau.x[k]} không phải hàng nào cũng bằng 0`,
+     oTaiMoc.every((o) => o === "0"), false);
+}
+// Và mẫu đó phải tự vượt được bộ kiểm định của chính phần mềm.
+eq("mẫu xét dấu không bị bộ kiểm định bắt lỗi",
+   codesOf(mauXetDau).filter((c) => c.startsWith("SC_") || c.startsWith("SIGN_")), []);
+eq("mẫu đồ thị có tâm đối xứng cũng hợp lệ",
+   codesOf(VISUAL_GUIDE.graph.sample).filter((c) => c.startsWith("GRAPH_")), []);
+
+// --- V12.1: tự dò tiệm cận NGANG, để đồ thị hàm nhất biến có đủ hai tiệm cận ---
+const tcn = (f) => detectHorizontalAsymptote(f);
+eq("nhất biến (x+1)/(x-1) có tiệm cận ngang y = 1", tcn("(x+1)/(x-1)"), 1);
+eq("(2x+3)/(x-1) có tiệm cận ngang y = 2", tcn("(2*x+3)/(x-1)"), 2);
+eq("(3-x)/(x+2) có tiệm cận ngang y = -1", tcn("(3-x)/(x+2)"), -1);
+eq("bậc hai trên bậc hai vẫn ra y = 1", tcn("(x^2+1)/(x^2-1)"), 1);
+// Thà không vẽ còn hơn vẽ sai: các ca sau KHÔNG được nhận là tiệm cận ngang.
+eq("bậc hai trên bậc nhất: không có tiệm cận ngang (có tiệm cận xiên)", tcn("(x^2+2*x-2)/(x-1)"), null);
+eq("đa thức thì không có", tcn("x^3-3*x+2"), null);
+eq("arctan hai đầu khác nhau thì không kết luận", tcn("atan(x)"), null);
+eq("y = 0 trùng trục Ox thì không kẻ thêm", tcn("1/x"), null);
+eq("3/(x^2+1) cũng về 0 nên không kẻ thêm", tcn("3/(x^2+1)"), null);
+eq("biểu thức sai thì trả null, không nổ", tcn("alert(1)"), null);
+
+// --- V12.1: góc lượng giác "2\\pi/3" bị đọc thành 23,14/3 ở V12.0 ---
+const doGoc = (t) => Math.round((gocRadian(t) * 180) / Math.PI * 1e6) / 1e6;
+eq("pi/3 = 60 độ", doGoc("\\pi/3"), 60);
+eq("2pi/3 = 120 độ, KHÔNG phải 81,9 độ", doGoc("2\\pi/3"), 120);
+eq("3pi/4 = 135 độ, KHÔNG phải 114,9 độ", doGoc("3\\pi/4"), 135);
+eq("5pi/6 = 150 độ", doGoc("5\\pi/6"), 150);
+eq("-pi/2 = -90 độ", doGoc("-\\pi/2"), -90);
+eq("chữ π Unicode cũng đọc được", doGoc("2π/3"), 120);
+eq("số radian thuần", doGoc("1.5707963267948966"), 90);
+eq("pi trơn = 180 độ", doGoc("\\pi"), 180);
+eq("biểu thức hỏng thì về 0, không NaN", gocRadian("alert(1)"), 0);
+// Cung nghiệm từ pi/3 tới 2pi/3 rộng 60 độ, tức cung NHỎ.
+eq("bề rộng cung nghiệm là 60 độ",
+   Math.round((gocChuan(gocRadian("2\\pi/3") - gocRadian("\\pi/3")) * 180) / Math.PI), 60);
+eq("hai cách viết cùng một tia cho cung rộng 0",
+   Math.round((gocChuan(gocRadian("2\\pi/3") - gocRadian("-4\\pi/3")) * 180) / Math.PI), 0);
+
+// --- V12.1: hai nhãn viết đè nhau trong hình Oxyz ---
+const mangOxyz = (v) => auditLesson({ title: "t", sections: [{ heading: "h", content: "c", visuals: [v] }] }).map((i) => i.code);
+eq("tâm mặt cầu và điểm cùng tên, cùng toạ độ -> cảnh báo",
+   mangOxyz({ type: "oxyz", sphere: { x: 1, y: 1, z: 1, r: 2, label: "I" },
+              points: [{ x: 1, y: 1, z: 1, label: "I" }], range: 4 }).includes("OXYZ_TRUNG_NHAN"), true);
+eq("khai một chỗ thì không cảnh báo",
+   mangOxyz({ type: "oxyz", sphere: { x: 1, y: 1, z: 1, r: 2, label: "I" }, range: 4 }).includes("OXYZ_TRUNG_NHAN"), false);
+eq("cùng tên nhưng khác toạ độ thì không cảnh báo",
+   mangOxyz({ type: "oxyz", sphere: { x: 1, y: 1, z: 1, r: 2, label: "I" },
+              points: [{ x: 2, y: 1, z: 1, label: "I" }], range: 4 }).includes("OXYZ_TRUNG_NHAN"), false);
+
+// --- V12.1: bảng tự tính lại thì KHÔNG chặn xuất, nhưng vẫn chỉ rõ chỗ sai ---
+const bangSaiCoBieuThuc = {
+  type: "variation_table", label: "y", expression: "x^3-3x+2",
+  x: ["-\\infty", "-1", "1", "+\\infty"],
+  derivative: ["+", "-", "+"],
+  values: ["-\\infty", "4", "0", "+\\infty"],
+};
+const mucCua = (visual) =>
+  auditLesson({ title: "t", sections: [{ heading: "h", content: "Một câu nội dung đủ dài để không bị coi là trống.", visuals: [visual] }] })
+    .filter((i) => i.code.startsWith("BBT_"));
+eq("bảng sai mà có biểu thức: không còn lỗi chặn xuất",
+   mucCua(bangSaiCoBieuThuc).some((i) => i.level === "error"), false);
+eq("và có nói rõ là đã tự tính lại",
+   mucCua(bangSaiCoBieuThuc).some((i) => i.code === "BBT_DA_TU_TINH_LAI"), true);
+eq("vẫn giữ lời chẩn đoán chi tiết, không chỉ nói chung chung",
+   mucCua(bangSaiCoBieuThuc).length > 1, true);
+// Không có biểu thức thì phần mềm không sửa được -> vẫn phải là lỗi.
+eq("thiếu hẳn hàng y′ mà không có biểu thức: vẫn chặn xuất",
+   mucCua({ type: "variation_table", label: "y", x: ["-\\infty", "m", "+\\infty"],
+            derivative: ["-"], values: ["+\\infty", "2m", "+\\infty"] }).some((i) => i.level === "error"), true);
+eq("chỉ thiếu ô tại mốc mà không có biểu thức: cảnh báo, không chặn",
+   mucCua({ type: "variation_table", label: "y", x: ["-\\infty", "m", "n", "+\\infty"],
+            derivative: ["-", "+", "-"], values: ["+\\infty", "a", "b", "-\\infty"] }).some((i) => i.level === "error"), false);
+// Sơ đồ cây ghi dấu phẩy Việt Nam là ĐÚNG, không được báo oan.
+const cayVN = {
+  type: "prob_tree", root: "Hộp bi",
+  branches: [
+    { label: "Bi đỏ", p: "0,6", children: [{ label: "Đỏ", p: "0,5", result: "0,30" }, { label: "Xanh", p: "0,5", result: "0,30" }] },
+    { label: "Bi xanh", p: "0,4", children: [{ label: "Đỏ", p: "0,25", result: "0,10" }, { label: "Xanh", p: "0,75", result: "0,30" }] },
+  ],
+};
+eq("xác suất viết dấu phẩy không bị báo sai tổng",
+   auditLesson({ title: "t", sections: [{ heading: "h", content: "Một câu nội dung đủ dài để không bị coi là trống.", visuals: [cayVN] }] })
+     .filter((i) => i.code.startsWith("TREE_")), []);
+eq("tổng sai thật thì vẫn báo",
+   auditLesson({ title: "t", sections: [{ heading: "h", content: "Một câu nội dung đủ dài để không bị coi là trống.",
+     visuals: [{ ...cayVN, branches: [{ ...cayVN.branches[0], p: "0,7" }, cayVN.branches[1]] }] }] })
+     .some((i) => i.code === "TREE_SUM"), true);
+// Hình nón chỉ có một đỉnh — đừng đòi n+1 tên.
+eq("hình nón đỉnh S không bị đòi thêm tên",
+   auditLesson({ title: "t", sections: [{ heading: "h", content: "Một câu nội dung đủ dài để không bị coi là trống.",
+     visuals: [{ type: "solid_3d", shape: "cone", labels: ["S"], caption: "Hình nón đỉnh S" }] }] })
+     .some((i) => i.code === "SOLID_LABELS"), false);
+eq("hình chóp thiếu tên thì vẫn nhắc",
+   auditLesson({ title: "t", sections: [{ heading: "h", content: "Một câu nội dung đủ dài để không bị coi là trống.",
+     visuals: [{ type: "solid_3d", shape: "pyramid", baseSides: 4, labels: ["S", "A"] }] }] })
+     .some((i) => i.code === "SOLID_LABELS"), true);
+
+// V12.2: nối danh sách kiểu tiếng Việt — "A, B và C", không phải "A và B và C".
+eq("ba cực trị nối bằng dấu phẩy rồi mới \"và\"",
+   khaoSatHamSo("x^4-2*x^2").sections[2].content.split("\n")[0],
+   "Đồ thị đi qua điểm cực tiểu $(-1; -1)$, điểm cực đại $(0; 0)$ và điểm cực tiểu $(1; -1)$.");
+eq("hai cực trị chỉ dùng \"và\"",
+   khaoSatHamSo("x^3-3*x+2").sections[2].content.split("\n")[0],
+   "Đồ thị đi qua điểm cực đại $(-1; 4)$ và điểm cực tiểu $(1; 0)$.");
+eq("không có cực trị thì không có dòng đó",
+   khaoSatHamSo("(x+1)/(x-1)").sections[2].content.includes("Đồ thị đi qua"), false);
 
 console.log(`\n${pass} kiểm thử đạt, ${fail} lỗi`);
 process.exit(fail?1:0);

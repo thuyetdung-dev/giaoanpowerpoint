@@ -49,7 +49,12 @@ export type GraphVisual = {
   yMin: number;
   yMax: number;
   asymptotes?: { kind: "vertical" | "horizontal" | "oblique"; value?: number; expression?: string }[];
-  points?: { x: number; y: number; label?: string; kind?: "max" | "min" | "inflection" | "root" | "plain" }[];
+  /**
+   * Điểm cần đánh dấu. `kind: "center"` là TÂM ĐỐI XỨNG — vẽ bằng vòng tròn
+   * RỖNG vì nó không phải điểm thuộc đồ thị (hàm phân thức không xác định tại
+   * hoành độ của tâm). Vẽ chấm đặc như các điểm khác là nói sai.
+   */
+  points?: { x: number; y: number; label?: string; kind?: "max" | "min" | "inflection" | "root" | "plain" | "center" }[];
   /** V11: tô miền giữa đồ thị và trục Ox (dạy tích phân, diện tích hình phẳng). */
   shade?: { from: number; to: number; label?: string };
   xLabel?: string;
