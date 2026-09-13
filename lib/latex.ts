@@ -238,6 +238,19 @@ export function latexToUnicode(input: string): LatexConvertResult {
 export type MathSegment = { math: boolean; value: string };
 
 /**
+ * AI ngoài (đặc biệt NotebookLM) thường trả LaTeX nhưng quên bọc `$...$`.
+ * Một dòng thuần công thức vẫn phải được KaTeX dựng, còn LaTeX xen trong câu
+ * văn sẽ được đổi sang Unicode ở `mixedLatexToUnicode`.
+ */
+function isBareFormulaLine(value: string): boolean {
+  const s = value.trim();
+  if (!/\\[a-zA-Z]+/.test(s)) return false;
+  if (/^[A-Za-zÀ-ỹ]{2,}\s/.test(s) && !/^[A-Za-z]\s*=/.test(s)) return false;
+  return /^(?:\\[a-zA-Z]+|[A-Za-z]\s*=|[-+0-9([])/.test(s) &&
+    /(?:=|\\(?:frac|sqrt|vec|overline|cos|sin|tan|lim|int|sum|perp|parallel|circ)\b)/.test(s);
+}
+
+/**
  * Cắt một đoạn văn thành các mảnh chữ thường và mảnh công thức.
  * Nhận cả hai lối viết `$...$` và `\( ... \)`.
  *
@@ -281,7 +294,15 @@ export function splitMathSegments(input: string): MathSegment[] {
       merged.push(current);
     }
   }
-  return merged;
+  // Không có dấu phân cách nhưng cả dòng là công thức: tự nhận diện để tránh
+  // in nguyên văn "\\vec", "\\frac", "\\sqrt", "\\circ" lên PowerPoint.
+  const bareAware: MathSegment[] = [];
+  merged.forEach((seg) => {
+    if (seg.math || !seg.value.includes("\\")) { bareAware.push(seg); return; }
+    const lines = seg.value.split(/(\n)/);
+    lines.forEach((line) => bareAware.push({ math: line !== "\n" && isBareFormulaLine(line), value: line }));
+  });
+  return bareAware;
 }
 
 /**
@@ -292,7 +313,9 @@ export function splitMathSegments(input: string): MathSegment[] {
  * sự cần mới thành ảnh, nhờ vậy phần lớn slide vẫn là chữ sửa được.
  */
 export function needsRichMath(input: string): boolean {
-  return splitMathSegments(input).some((seg) => seg.math && latexToUnicode(seg.value).lossy);
+  return splitMathSegments(input).some((seg) =>
+    (seg.math || seg.value.includes("\\")) && latexToUnicode(seg.value).lossy,
+  );
 }
 
 /**
@@ -304,7 +327,7 @@ export function mixedLatexToUnicode(input: string): LatexConvertResult {
   let lossy = false;
   const text = splitMathSegments(input)
     .map((seg) => {
-      if (!seg.math) return seg.value;
+      if (!seg.math) return seg.value.includes("\\") ? latexToUnicode(seg.value).text : seg.value;
       const r = latexToUnicode(seg.value);
       r.unknownCommands.forEach((c) => unknown.add(c));
       if (r.lossy) lossy = true;
