@@ -196,7 +196,7 @@ export type QuizVisual = {
   timer?: number;
 };
 
-export type Visual =
+export type Visual = (
   | FormulaVisual
   | VariationVisual
   | SignVisual
@@ -212,7 +212,11 @@ export type Visual =
   | VectorVisual
   | VennVisual
   | TableVisual
-  | QuizVisual;
+  | QuizVisual
+) & {
+  /** Cỡ chữ riêng của hình/câu hỏi trên slide, tính bằng pt. */
+  fontSize?: number;
+};
 
 export type VisualType = Visual["type"];
 
@@ -237,6 +241,8 @@ export type Section = {
   minutes?: number;
   /** V11: bố cục ép buộc khi cần. */
   layout?: "auto" | "text" | "hero" | "split" | "two-visual" | "full-visual";
+  /** Cỡ chữ riêng cho mục/slide; bỏ trống để phần mềm tự dàn trang. */
+  fontSize?: { title?: number; body?: number };
 };
 
 export type Lesson = {
