@@ -219,9 +219,10 @@ async function richTextPng(
            * đúng như thầy giáo sửa tay trong bản góp ý. Cỡ đầy đủ cũng dễ nhìn
            * hơn hẳn khi chiếu lên màn.
            */
-          return katex.renderToString(`\\displaystyle ${seg.value}`, {
+          const html = katex.renderToString(`\\displaystyle ${seg.value}`, {
             throwOnError: false, displayMode: false, strict: "ignore", trust: false, output: "html",
           });
+          return `<span class="math-keep">${html}</span>`;
         } catch {
           return esc(mixedLatexToUnicode(seg.value).text);
         }
