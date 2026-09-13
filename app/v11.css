@@ -277,6 +277,9 @@
    vượt hẳn dòng chữ. Kéo về bằng nhau cho cân. */
 .rich-math .katex { font-size: 1.02em; }
 .rich-math .katex-display { margin: .3em 0; }
+/* Giữ các phần của cùng một công thức (đặc biệt `y =` + phân số) liền nhau.
+   Khi cuối dòng thiếu chỗ, cả công thức sẽ xuống dòng thay vì bị chẻ đôi. */
+.math-keep { display: inline-block; white-space: nowrap; }
 
 /* ================================================================== */
 /* V11.9 — Trình biên tập: danh sách từng slide, ô sửa toàn màn hình,  */
