@@ -230,7 +230,8 @@
 
 /* --- Công thức --- */
 .export-staging .visual-card.formula { width: 900px; padding: 18px 24px; }
-.export-staging .formula-block .math.display { font-size: calc(48px * var(--visual-font-scale, 1)); }
+.export-staging .formula-block .math.display { font-size: calc(48px * var(--visual-font-scale, 1) * var(--formula-fit, 1)); max-width:100%; overflow:visible; }
+.export-staging .formula-block .katex-display { margin:.25em 0; overflow:visible; }
 .export-staging .formula-block .visual-caption { font-size: 36px; margin-top: 14px; }
 
 /* --- Bảng số liệu --- */
