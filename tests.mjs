@@ -4,7 +4,7 @@ import { computeLevels, tenDaoHam } from "./_build/lib/bbt.js";
 import * as Lib from "./_build/lib/library.js";
 import { laThuHepMien, solveVariationTable, vietSo } from "./_build/lib/bbtsolve.js";
 import { auditLesson, repairLesson } from "./_build/lib/audit.js";
-import { buildDeck, outlineDeck } from "./_build/lib/slides.js";
+import { buildDeck, isMeaningfulVisual, outlineDeck } from "./_build/lib/slides.js";
 import { VISUAL_GUIDE, readVisualJson, sampleFor } from "./_build/lib/visualguide.js";
 import { VISUAL_LABEL } from "./_build/lib/themes.js";
 import { gocChuan, gocRadian, soVN, ticksFit, ticksFitDoc } from "./_build/lib/plot.js";
@@ -52,6 +52,14 @@ eq("giữ tích phân", latexToUnicode("\\int_0^1 x dx").text.startsWith("∫₀
 eq("phân số đẹp", latexToUnicode("\\frac{1}{2}").text, "½");
 eq("mũ unicode", latexToUnicode("x^{2}+y^{3}").text, "x²+y³");
 eq("báo lệnh lạ thay vì xoá", latexToUnicode("\\binom{n}{k}").unknownCommands, ["\\binom"]);
+eq("LaTeX trần nguyên dòng được nhận là công thức",
+   splitMathSegments("\\vec{u} \\cdot \\vec{v} = \\frac{1}{2}")[0].math, true);
+eq("LaTeX trần xen câu không còn in mã lệnh",
+   mixedLatexToUnicode("Cho \\vec{a} = (1; 2; 3)").text.includes("\\vec"), false);
+eq("công thức chỉ có mũi tên là hình giữ chỗ",
+   isMeaningfulVisual({ type: "formula", latex: "\\longrightarrow" }), false);
+eq("công thức thật vẫn được giữ",
+   isMeaningfulVisual({ type: "formula", latex: "x^2+1=0" }), true);
 eq("văn bản trộn công thức", mixedLatexToUnicode("Xét $\\sqrt{x}\\geq 0$ với mọi x.").text, "Xét √x≥0 với mọi x.");
 eq("không tách y= khỏi phân số", splitMathSegments("Hàm số $y =$ $\\frac{ax+b}{cx+d}$.") , [
   { math:false, value:"Hàm số " },
