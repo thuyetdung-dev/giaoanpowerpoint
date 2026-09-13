@@ -223,6 +223,10 @@
 .export-staging article { width: 1280px; }
 .export-staging .visual-grid { display: block; }
 .export-staging .visual-card { width: auto; margin: 14px 0; padding: 0; border: 0; background: #fff; overflow: visible; }
+.variation-render { display: block; width: 100%; min-width: 0; background: #fff; }
+.visual-card.variation_table .variation-render { width: 100%; }
+.export-staging .variation-render,
+.export-staging .variation-render .variation-svg { width: 1280px; max-width: none; min-width: 0; }
 
 /* --- Công thức --- */
 .export-staging .visual-card.formula { width: 900px; padding: 18px 24px; }
