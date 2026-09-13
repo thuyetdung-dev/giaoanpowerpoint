@@ -13,6 +13,7 @@
  */
 
 import katex from "katex";
+import { splitMathSegments } from "@/lib/latex";
 
 /**
  * `\displaystyle`: phân số giữ cỡ đầy đủ và cận của "lim" nằm ngay dưới, đúng
@@ -46,18 +47,12 @@ export const MathText = ({
  */
 export function MixedMath({ value, compact = false }: { value: string; compact?: boolean }) {
   const clean = String(value ?? "").normalize("NFC").replace(/`\s+/g, " ");
-  const parts = clean.split(/(\$[^$]+\$|\\\([\s\S]*?\\\))/g);
+  const parts = splitMathSegments(clean);
   return (
     <>
-      {parts.map((part, i) => {
-        const math =
-          part.startsWith("$") && part.endsWith("$")
-            ? part.slice(1, -1)
-            : part.startsWith("\\(") && part.endsWith("\\)")
-            ? part.slice(2, -2)
-            : null;
-        return math !== null ? <MathText key={i} value={math} compact={compact} /> : <span key={i}>{part}</span>;
-      })}
+      {parts.map((part, i) => part.math
+        ? <span className="math-keep" key={i}><MathText value={part.value} compact={compact} /></span>
+        : <span key={i}>{part.value}</span>)}
     </>
   );
 }
