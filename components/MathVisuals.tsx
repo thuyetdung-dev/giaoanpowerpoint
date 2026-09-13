@@ -22,6 +22,7 @@
 
 import { useId } from "react";
 import { compileExpression, detectHorizontalAsymptote, detectPoles } from "@/lib/mathexpr";
+import { graphPointsToDisplay } from "@/lib/graphpoints";
 import { soVN } from "@/lib/plot";
 import type {
   GraphVisual,
@@ -435,6 +436,9 @@ function Graph({ v }: { v: GraphVisual }) {
   const xMin = v.xMin, xMax = v.xMax, yMin = v.yMin, yMax = v.yMax;
   const sx = (x: number) => p + ((x - xMin) * (W - 2 * p)) / (xMax - xMin);
   const sy = (y: number) => H - p - ((y - yMin) * (H - 2 * p)) / (yMax - yMin);
+  // Cực đại, cực tiểu và tâm đối xứng đã có trong nội dung/bảng biến thiên.
+  // Không vẽ lại chúng trên đồ thị vì chấm và nhãn che đường cong, trục, tiệm cận.
+  const visiblePoints = graphPointsToDisplay(v.points);
 
   /**
    * V11.6 viết `v.expressions?.length ? v.expressions : [v.expression]` — tức là
@@ -605,7 +609,7 @@ function Graph({ v }: { v: GraphVisual }) {
   const yHangSoX = (yMin <= 0 && yMax >= 0 ? sy(0) : H - p) + fs + 6;
   const yCuaSoX = (t: number) => {
     const cx = sx(t), nua = beRong(t) / 2, giua = yHangSoX - fs * 0.36;
-    const biDe = (v.points ?? []).some(
+    const biDe = visiblePoints.some(
       (q) => Math.abs(sx(q.x) - cx) < nua + 9 && Math.abs(sy(q.y) - giua) < fs * 0.5 + 9,
     );
     if (!biDe) return yHangSoX;
@@ -624,7 +628,7 @@ function Graph({ v }: { v: GraphVisual }) {
   const xTenTrucY = Math.min(axisXpx + 14, W - 8);
   vatCan.push({ x0: xTenTrucY, x1: xTenTrucY + beRong(v.yLabel || "y", fs + 2), y: Math.max(fs + 4, p - 14) });
 
-  const placedPoints = (v.points ?? []).map((q) => {
+  const placedPoints = visiblePoints.map((q) => {
     const label = q.label || `(${q.x}; ${q.y})`;
     const below = q.kind === "min";
     const w = label.length * fs * 0.54;
