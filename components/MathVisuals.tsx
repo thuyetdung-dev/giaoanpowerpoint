@@ -35,7 +35,7 @@ import { ExtraVisual, isExtraVisual } from "./MathVisualsExtra";
 import { computeLevels, isMinusInf, isPlusInf, plainMath, shortLabel, tableCaption, tableCaptionLatex, tenDaoHam } from "@/lib/bbt";
 import { needsRichMath } from "@/lib/latex";
 import { laThuHepMien, solveVariationTable, tableMatches } from "@/lib/bbtsolve";
-import { GRAPH_H, GRAPH_W, SC_HEAD, SC_ROW_H, SC_W, VT_CAPTION_H, VT_H, VT_W, svgFontPx } from "@/lib/slides";
+import { GRAPH_H, GRAPH_W, SC_HEAD, SC_ROW_H, SC_W, VT_CAPTION_H, VT_H, VT_W, formulaComplexity, svgFontPx } from "@/lib/slides";
 
 /* ------------------------------------------------------------------ */
 /* Công thức                                                           */
@@ -48,8 +48,12 @@ export { MathText, MixedMath } from "./MathText";
 import { MathText, MixedMath } from "./MathText";
 
 function Formula({ v }: { v: FormulaVisual }) {
+  const complexity = formulaComplexity(v.latex);
+  const lengthScale = Math.min(1, 82 / Math.max(82, String(v.latex ?? "").length));
+  const fit = Math.max(0.76, lengthScale - complexity * 0.018);
   return (
-    <div className={`formula-block${v.highlight ? " highlight" : ""}`}>
+    <div className={`formula-block${v.highlight ? " highlight" : ""}`}
+         style={{ "--formula-fit": fit } as CSSProperties}>
       <MathText value={v.latex} display={v.display ?? true} />
       {v.caption ? <small className="visual-caption"><MixedMath value={v.caption} /></small> : null}
     </div>
