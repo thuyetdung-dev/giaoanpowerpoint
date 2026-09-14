@@ -152,7 +152,9 @@ export default function Page() {
   const [ocrDen, setOcrDen] = useState(20);
   const [ocrTienDo, setOcrTienDo] = useState<TienDoOCR | null>(null);
   const ocrDung = useRef<AbortController | null>(null);
-  const [apiKey, setApiKey] = useState("");
+  /* Giữ khóa riêng theo nhà cung cấp để không gửi nhầm khóa khi đổi nguồn AI. */
+  const [apiKeys, setApiKeys] = useState<Record<Provider, string>>({ gemini: "", openai: "" });
+  const [showApiKey, setShowApiKey] = useState(false);
   const [useServerKey, setUseServerKey] = useState(false);
   const [provider, setProvider] = useState<Provider>("gemini");
   const [models, setModels] = useState<AiModel[]>([]);
@@ -312,8 +314,11 @@ export default function Page() {
   }, [pickSection]);
   const theme = useMemo(() => getTheme(lesson?.theme), [lesson?.theme]);
   const currentIssues = audit.filter((a) => a.level !== "ok" && (!a.section || a.section === selected + 1));
+  const providerInfo = PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0];
+  const apiKey = apiKeys[provider];
+  const setApiKey = (value: string) => setApiKeys((old) => ({ ...old, [provider]: value }));
 
-  /* ---------- Kết nối Gemini ---------- */
+  /* ---------- Kết nối AI: Gemini hoặc OpenAI ---------- */
 
   /** Lấy danh sách mô hình — từ khoá trong trình duyệt, hoặc từ khoá trên máy chủ. */
   async function scan(): Promise<AiModel[]> {
@@ -803,13 +808,14 @@ export default function Page() {
                 setProvider(e.target.value as Provider);
                 setModels([]);
                 setModel("auto");
+                setShowApiKey(false);
                 setMessage("Đã đổi nguồn AI. Bấm \u201cDò\u201d để lấy danh sách mô hình.");
               }}
             >
               {PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
           </label>
-          <p className="key-note">{PROVIDERS.find((p) => p.id === provider)?.hint}</p>
+          <p className="key-note">{providerInfo.hint}</p>
 
           <label className="check">
             <input type="checkbox" checked={useServerKey} onChange={(e) => { setUseServerKey(e.target.checked); setModels([]); setModel("auto"); }} />
@@ -825,24 +831,34 @@ export default function Page() {
 
           {!useServerKey && (
             <>
-              <label>🔑 Khoá API {PROVIDERS.find((p) => p.id === provider)?.label}
+              <label>🔑 Khoá API {providerInfo.label}</label>
+              <div className="provider-key-row">
                 <input
-                  type="password"
+                  type={showApiKey ? "text" : "password"}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={provider === "openai" ? "sk-..." : "Dán khoá API"}
-                  autoComplete="off"
+                  placeholder={provider === "openai" ? "Dán khóa OpenAI (sk-...)" : "Dán khóa Google Gemini"}
+                  autoComplete="new-password"
+                  aria-label={`Khóa API ${providerInfo.label}`}
                 />
-              </label>
+                <button type="button" onClick={() => setShowApiKey((v) => !v)} aria-label={`${showApiKey ? "Ẩn" : "Hiện"} khóa API`}>
+                  {showApiKey ? "Ẩn" : "Hiện"}
+                </button>
+                <button type="button" onClick={() => { setApiKey(""); setModels([]); setModel("auto"); setShowApiKey(false); setMessage(`Đã xóa khóa ${providerInfo.label} khỏi phiên này.`); }}>
+                  Xóa
+                </button>
+              </div>
               {provider === "openai" && (
                 <p className="key-warn">
-                  ⚠ Khoá OpenAI tính tiền theo lượng chữ. Nếu trang này ai cũng mở được,
-                  <b> đừng dán khoá ở đây</b> — người khác có thể lấy khoá và tiêu tiền của bạn.
-                  Hãy đặt khoá vào biến <code>OPENAI_API_KEY</code> trên Vercel rồi tích ô
-                  &ldquo;Dùng khoá chung của nhà trường&rdquo;.
+                  ⚠ OpenAI tính phí theo mức sử dụng. Chỉ dùng khóa cá nhân trên thiết bị tin cậy.
+                  Chỉ cấu hình <code>OPENAI_API_KEY</code> trên Vercel khi website đã có đăng nhập,
+                  giới hạn người dùng và hạn mức gọi API.
                 </p>
               )}
-              <p className="key-note">{PROVIDERS.find((p) => p.id === provider)?.keyHint}</p>
+              <p className="key-note provider-key-help">
+                {providerInfo.keyHint}.{" "}
+                <a href={providerInfo.keyUrl} target="_blank" rel="noreferrer">{providerInfo.keyLinkLabel} ↗</a>
+              </p>
             </>
           )}
 
@@ -856,8 +872,8 @@ export default function Page() {
 
           <p className="key-note">
             {useServerKey
-              ? "Khoá nằm trên máy chủ, trình duyệt không nhìn thấy — cách an toàn nhất."
-              : "Khoá chỉ nằm trong trình duyệt của bạn, không gửi về máy chủ LessonStudio."}
+              ? "Khoá nằm trên máy chủ và trình duyệt không nhìn thấy. Website công khai phải có kiểm soát truy cập và hạn mức sử dụng."
+              : `Khoá chỉ giữ trong bộ nhớ phiên này và được gửi trực tiếp tới ${providerInfo.label}; không lưu vào thư viện bài giảng.`}
           </p>
         </div>
       </aside>
