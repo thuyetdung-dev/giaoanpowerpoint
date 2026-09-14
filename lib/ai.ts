@@ -23,18 +23,22 @@ import { callOpenAI, scanOpenAIModels } from "./openai-client";
 
 export type Provider = "gemini" | "openai";
 
-export const PROVIDERS: { id: Provider; label: string; hint: string; keyHint: string }[] = [
+export const PROVIDERS: { id: Provider; label: string; hint: string; keyHint: string; keyUrl: string; keyLinkLabel: string }[] = [
   {
     id: "gemini",
     label: "Google Gemini",
     hint: "Có bậc miễn phí, đủ dùng để soạn bài hằng ngày.",
     keyHint: "Lấy khoá tại aistudio.google.com → Get API key",
+    keyUrl: "https://aistudio.google.com/app/apikey",
+    keyLinkLabel: "Mở Google AI Studio",
   },
   {
     id: "openai",
     label: "OpenAI",
     hint: "Trả phí theo lượng chữ. Nên để khoá trên máy chủ, đừng dán vào trình duyệt.",
     keyHint: "Lấy khoá tại platform.openai.com → API keys (khoá bắt đầu bằng sk-)",
+    keyUrl: "https://platform.openai.com/api-keys",
+    keyLinkLabel: "Mở trang API keys của OpenAI",
   },
 ];
 
