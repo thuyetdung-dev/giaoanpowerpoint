@@ -14,6 +14,7 @@ import { APP_LABEL, APP_VERSION } from "./_build/lib/version.js";
 import { promptChoAiNgoai, VISUAL_SPEC } from "./_build/lib/prompt.js";
 import { docTuOCR, LoiCanOCR } from "./_build/lib/importer.js";
 import { ghepTrang, coChuKhong, NGUON_MAC_DINH, TOI_DA_TRANG } from "./_build/lib/ocr.js";
+import { PROVIDERS } from "./_build/lib/ai.js";
 import { createRequire } from "node:module";
 const PKG = createRequire(import.meta.url)("./package.json");
 
@@ -25,6 +26,17 @@ const eq=(name,a,b,tol=1e-9)=>{const ok=(typeof a==="number"&&typeof b==="number
 eq("nhãn phiên bản khớp package.json",
    [APP_VERSION, APP_LABEL],
    [PKG.version.replace(/\.0$/, ""), `LessonStudio V${PKG.version.replace(/\.0$/, "")}`]);
+
+// --- V12.10: hai nhà cung cấp và khóa riêng biệt
+eq("có đủ Gemini và OpenAI", PROVIDERS.map((p) => p.id), ["gemini", "openai"]);
+eq("mỗi nguồn AI có liên kết lấy khóa HTTPS",
+   PROVIDERS.every((p) => /^https:\/\//.test(p.keyUrl) && Boolean(p.keyLinkLabel)), true);
+{
+  const { readFileSync } = await import("node:fs");
+  const page = readFileSync("app/page.tsx", "utf8");
+  eq("khóa Gemini và OpenAI được giữ riêng", /Record<Provider, string>/.test(page) && /apiKeys\[provider\]/.test(page), true);
+  eq("ô khóa có cả nút Hiện và Xóa", /setShowApiKey/.test(page) && />\s*Xóa\s*</.test(page), true);
+}
 
 // --- Lỗi V10: -x^2 gây SyntaxError vì "-x**2" không hợp lệ trong JS
 eq("-x^2 tại x=3", compileExpression("-x^2").eval(3), -9);
