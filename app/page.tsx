@@ -1390,6 +1390,10 @@ export default function Page() {
                   <div className="ef-left">
                     {spec.kind === "cover" && (
                       <>
+                        <label>Cỡ tiêu đề trang bìa (pt)
+                          <input type="number" min="24" max="60" value={lesson.autoFontSize?.coverTitle ?? 44}
+                            onChange={(e) => applyLesson({ ...lesson, autoFontSize: { ...lesson.autoFontSize, coverTitle: Number(e.target.value) || 44 } })} />
+                        </label>
                         <label>Tên bài giảng
                           <input value={lesson.title} onChange={(e) => applyLesson({ ...lesson, title: e.target.value })} />
                         </label>
@@ -1408,13 +1412,29 @@ export default function Page() {
                       </>
                     )}
                     {spec.kind === "objectives" && (
-                      <label className="grow">Yêu cầu cần đạt (mỗi yêu cầu một dòng)
-                        <textarea value={(lesson.objectives ?? []).join("\n")}
-                          onChange={(e) => applyLesson({ ...lesson, objectives: e.target.value.split(/\n+/).map((x) => x.trim()).filter(Boolean) })} />
-                      </label>
+                      <>
+                        <div className="font-size-controls">
+                          <label>Cỡ tiêu đề (pt)
+                            <input type="number" min="20" max="44" value={lesson.autoFontSize?.objectivesTitle ?? 32}
+                              onChange={(e) => applyLesson({ ...lesson, autoFontSize: { ...lesson.autoFontSize, objectivesTitle: Number(e.target.value) || 32 } })} />
+                          </label>
+                          <label>Cỡ nội dung (pt)
+                            <input type="number" min="20" max="48" value={lesson.autoFontSize?.objectivesBody ?? spec.bodyPt}
+                              onChange={(e) => applyLesson({ ...lesson, autoFontSize: { ...lesson.autoFontSize, objectivesBody: Number(e.target.value) || 32 } })} />
+                          </label>
+                        </div>
+                        <label className="grow">Yêu cầu cần đạt (mỗi yêu cầu một dòng)
+                          <textarea value={(lesson.objectives ?? []).join("\n")}
+                            onChange={(e) => applyLesson({ ...lesson, objectives: e.target.value.split(/\n+/).map((x) => x.trim()).filter(Boolean) })} />
+                        </label>
+                      </>
                     )}
                     {spec.kind === "divider" && (
                       <>
+                        <label>Cỡ chữ trang phân cách (pt)
+                          <input type="number" min="28" max="64" value={lesson.autoFontSize?.divider ?? 48}
+                            onChange={(e) => applyLesson({ ...lesson, autoFontSize: { ...lesson.autoFontSize, divider: Number(e.target.value) || 48 } })} />
+                        </label>
                         <label>Pha hoạt động của trang phân cách
                           <select value={spec.phase} onChange={(e) => {
                             const phase = e.target.value as Section["phase"];
@@ -1427,10 +1447,22 @@ export default function Page() {
                       </>
                     )}
                     {spec.kind === "end" && (
-                      <label className="grow">Từ khóa cuối bài (mỗi từ khóa một dòng)
-                        <textarea value={(lesson.keywords ?? []).join("\n")}
-                          onChange={(e) => applyLesson({ ...lesson, keywords: e.target.value.split(/\n+/).map((x) => x.trim()).filter(Boolean) })} />
-                      </label>
+                      <>
+                        <div className="font-size-controls">
+                          <label>Cỡ lời kết (pt)
+                            <input type="number" min="24" max="60" value={lesson.autoFontSize?.endTitle ?? 40}
+                              onChange={(e) => applyLesson({ ...lesson, autoFontSize: { ...lesson.autoFontSize, endTitle: Number(e.target.value) || 40 } })} />
+                          </label>
+                          <label>Cỡ từ khóa (pt)
+                            <input type="number" min="16" max="40" value={lesson.autoFontSize?.endKeywords ?? 22}
+                              onChange={(e) => applyLesson({ ...lesson, autoFontSize: { ...lesson.autoFontSize, endKeywords: Number(e.target.value) || 22 } })} />
+                          </label>
+                        </div>
+                        <label className="grow">Từ khóa cuối bài (mỗi từ khóa một dòng)
+                          <textarea value={(lesson.keywords ?? []).join("\n")}
+                            onChange={(e) => applyLesson({ ...lesson, keywords: e.target.value.split(/\n+/).map((x) => x.trim()).filter(Boolean) })} />
+                        </label>
+                      </>
                     )}
                   </div>
                   <div className="ef-right">
