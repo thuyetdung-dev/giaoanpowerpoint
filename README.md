@@ -97,3 +97,5 @@ Các hình Toán không được AI xuất thành ảnh. AI chỉ sinh JSON có 
 - Kiểm định cấu trúc bài giảng, công thức, bảng biến thiên, bảng xét dấu và miền đồ thị; lỗi nghiêm trọng chặn xuất.
 - Xuất PowerPoint 16:9 giữ nguyên hình ảnh đã render, Word có bảng dữ liệu, ảnh xem trước, HTML và JSON.
   (Xuất PDF đã gỡ từ bản V12; nếu cần in, xuất PowerPoint rồi in ra PDF từ PowerPoint.)
+
+  
