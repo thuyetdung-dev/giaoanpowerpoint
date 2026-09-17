@@ -1,0 +1,99 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Thử pdf.js v6</title>
+<h1>Thử pdf.js bằng một tệp PDF thật</h1>
+<p>Chạy ĐÚNG những lời gọi mà <code>lib/importer.ts</code> và <code>lib/ocr.ts</code> dùng.
+Mở sau mỗi lần nâng cấp <code>pdfjs-dist</code>.</p>
+<ol>
+  <li>Ở thư mục gốc kho, chạy: <code>python3 -m http.server 8877</code></li>
+  <li>Mở <code>http://127.0.0.1:8877/scripts/thu-pdfjs.html</code></li>
+  <li>Chọn một tệp PDF có chữ (SGK, đề thi… — dùng bản scan để thử luôn đường OCR)</li>
+</ol>
+<p><input type="file" id="tep" accept="application/pdf"></p>
+<pre id="out">Hãy chọn một tệp PDF.</pre>
+<script type="module">
+document.getElementById("tep").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  if (f) await chay(await f.arrayBuffer());
+});
+
+async function chay(goc) {
+/* Chạy ĐÚNG những lời gọi mà lib/importer.ts và lib/ocr.ts dùng, trên một tệp
+   PDF thật, trong trình duyệt thật. Mục đích: bắt những chỗ pdf.js v6 đổi API
+   mà bước dựng (build) không hề báo. */
+const out = [];
+const ghi = (t) => { out.push(t); document.getElementById("out").textContent = out.join("\n"); };
+out.length = 0;
+
+try {
+  const pdfjs = await import("/node_modules/pdfjs-dist/legacy/build/pdf.mjs");
+  /* Trong sản phẩm thật, workerSrc trỏ ra CDN theo pdfjs.version. Ở đây trỏ vào
+     tệp cục bộ vì máy chạy thử không ra được Internet — phần API cần kiểm thì
+     giống hệt. */
+  pdfjs.GlobalWorkerOptions.workerSrc = "/node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs";
+  ghi("phiên bản pdf.js: " + pdfjs.version);
+
+  /* MỖI LẦN mở tài liệu phải có một Uint8Array MỚI. pdf.js chuyển quyền sở hữu
+     vùng nhớ sang worker (transfer), nên mảng cũ bị "detached" và lần mở thứ
+     hai sẽ hỏng. Mã thật làm đúng việc này: cả importer.ts lẫn ocr.ts đều gọi
+     `new Uint8Array(await file.arrayBuffer())` riêng cho từng lần. */
+  const layData = () => new Uint8Array(goc.slice(0));
+
+  /* ---------- Đường 1: importer.ts — trích chữ ---------- */
+  {
+    const tacVuNap = pdfjs.getDocument({ data: layData() });
+    let chu = "";
+    try {
+      const pdf = await tacVuNap.promise;
+      ghi("importer: số trang = " + pdf.numPages);
+      const page = await pdf.getPage(1);
+      const content = await page.getTextContent();
+      chu = content.items.map((i) => ("str" in i ? i.str : "")).join(" ");
+      ghi("importer: trích được " + chu.length + " ký tự");
+      ghi("importer: nội dung = " + JSON.stringify(chu.slice(0, 60)));
+    } finally {
+      await tacVuNap.destroy();
+      ghi("importer: tacVuNap.destroy() CHẠY ĐƯỢC");
+    }
+    /* PDF ảnh quét thì không có chữ để trích — đó là chuyện bình thường, và
+       chính là lúc đường OCR bên dưới phải gánh. Chỉ báo hỏng nếu API vỡ. */
+    if (!chu.trim()) ghi("importer: (tệp này không có lớp chữ — nhiều khả năng là bản scan)");
+  }
+
+  /* ---------- Đường 2: ocr.ts — vẽ trang ra canvas ---------- */
+  {
+    const tacVuNap = pdfjs.getDocument({ data: layData() });
+    try {
+      const pdf = await tacVuNap.promise;
+      const page = await pdf.getPage(1);
+      const view = page.getViewport({ scale: 2 });
+      ghi("ocr: viewport = " + Math.round(view.width) + "x" + Math.round(view.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(view.width);
+      canvas.height = Math.ceil(view.height);
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport: view, canvas }).promise;
+      page.cleanup();
+      ghi("ocr: page.render() CHẠY ĐƯỢC");
+
+      /* Có mực thật trên canvas chưa? Nếu API đổi mà không báo lỗi, ảnh sẽ
+         trắng tinh và Tesseract đọc ra trang rỗng — đúng kiểu hỏng âm thầm. */
+      const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let toi = 0;
+      for (let i = 0; i < px.length; i += 4) if (px[i] < 200) toi++;
+      ghi("ocr: số điểm ảnh có mực = " + toi);
+      if (toi < 100) throw new Error("canvas trắng tinh — render không vẽ được gì");
+    } finally {
+      await tacVuNap.destroy();
+      ghi("ocr: tacVuNap.destroy() CHẠY ĐƯỢC");
+    }
+  }
+
+  ghi("KẾT LUẬN: ĐẠT");
+} catch (e) {
+  ghi("KẾT LUẬN: HỎNG — " + (e && e.message || e));
+}
+}
+</script>

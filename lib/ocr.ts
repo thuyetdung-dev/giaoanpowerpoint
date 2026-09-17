@@ -146,10 +146,15 @@ async function napPdfjs(workerPdf?: string) {
 /** Số trang của một tệp PDF — để giao diện biết mà hỏi thầy đọc từ trang nào. */
 export async function soTrangPdf(file: File, workerPdf?: string): Promise<number> {
   const pdfjs = await napPdfjs(workerPdf);
-  const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
-  const n = pdf.numPages;
-  await pdf.destroy();
-  return n;
+  /* destroy() nằm ở TÁC VỤ NẠP, không ở tài liệu: pdf.js v6 đã gỡ
+     PDFDocumentProxy.destroy(). Xem ghi chú dài hơn ở lib/importer.ts. */
+  const tacVuNap = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+  try {
+    const pdf = await tacVuNap.promise;
+    return pdf.numPages;
+  } finally {
+    await tacVuNap.destroy();
+  }
 }
 
 /**
@@ -164,7 +169,8 @@ export async function ocrPdf(file: File, opt: TuyChonOCR = {}): Promise<TrangOCR
 
   bao({ trang: 0, tong: 0, viec: "Đang mở tệp PDF…", phan: 0 });
   const pdfjs = await napPdfjs(opt.workerPdf);
-  const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const tacVuNap = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+  const pdf = await tacVuNap.promise;
 
   const tu = Math.max(1, Math.min(opt.tuTrang ?? 1, pdf.numPages));
   const den = Math.max(tu, Math.min(opt.denTrang ?? pdf.numPages, pdf.numPages, tu + TOI_DA_TRANG - 1));
@@ -203,7 +209,10 @@ export async function ocrPdf(file: File, opt: TuyChonOCR = {}): Promise<TrangOCR
          Tesseract đọc ra một trang trắng tinh không chữ nào. */
       ctx.fillStyle = "#fff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      await page.render({ canvasContext: ctx, viewport: view, canvas } as any).promise;
+      /* Bỏ được `as any` từ v6: `canvas` nay là trường chính thức của
+         RenderParameters (v5 chưa có nên phải ép kiểu). Bỏ ép kiểu đi thì
+         TypeScript mới thật sự kiểm được lời gọi này ở những lần nâng cấp sau. */
+      await page.render({ canvasContext: ctx, viewport: view, canvas }).promise;
       page.cleanup();
 
       huy(opt.signal);
@@ -217,7 +226,7 @@ export async function ocrPdf(file: File, opt: TuyChonOCR = {}): Promise<TrangOCR
     }
   } finally {
     try { await worker.terminate(); } catch { /* đóng được thì tốt, không thì thôi */ }
-    try { await pdf.destroy(); } catch { /* nt */ }
+    try { await tacVuNap.destroy(); } catch { /* nt */ }
   }
   return ketQua;
 }
