@@ -1,0 +1,55 @@
+name: Kiểm chứng
+
+# Chép tệp này vào:  .github/workflows/ci-verify.yml
+#
+# Chạy đúng lệnh mà README đã dặn — npm run verify — nhưng để máy nhớ thay người:
+#   typecheck  →  235 kiểm thử  →  dựng bản production
+# Hỏng bất kỳ bước nào là PR đỏ.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    name: typecheck + test + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # npm ci: cài đúng phiên bản trong package-lock.json, không tự nâng cấp.
+      - name: Cài phụ thuộc
+        run: npm ci
+
+      - name: Kiểm tra kiểu TypeScript
+        run: npm run typecheck
+
+      - name: Chạy bộ kiểm thử Toán học
+        run: npm test
+
+      - name: Dựng bản production
+        run: npm run build
+
+  # Cảnh báo lỗ hổng phụ thuộc, nhưng KHÔNG chặn merge.
+  # Lý do: phần lớn cảnh báo còn lại cần nâng cấp phá vỡ (next, pptxgenjs).
+  # Để nó chặn thì mọi PR đều đỏ và người ta sẽ quen bỏ qua cả CI.
+  audit:
+    name: Rà lỗ hổng phụ thuộc (chỉ cảnh báo)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=high

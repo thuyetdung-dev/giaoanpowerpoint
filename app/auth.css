@@ -1,0 +1,159 @@
+/* app/auth.css — Trang đăng nhập và trang tạo tài khoản (V12.11)
+   Tệp CSS riêng, không đụng tới các tệp CSS của trình soạn bài: hai trang này
+   đứng ngoài giao diện chính nên trộn vào đó chỉ làm cả hai khó sửa. */
+
+.dn-man {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 28px 16px;
+  background: linear-gradient(150deg, #0b1c35, #123b61);
+}
+
+.dn-the {
+  width: min(460px, 100%);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 32px 34px;
+  border-radius: 20px;
+  background: #fff;
+  color: #123252;
+  box-shadow: 0 24px 70px #0006;
+}
+.dn-the.dn-rong { width: min(640px, 100%); }
+
+.dn-the h1 { margin: 0; font-size: 1.25rem; line-height: 1.35; text-align: center; }
+.dn-phu { margin: 0 0 6px; text-align: center; color: #5d7286; font-size: .86rem; }
+
+.dn-the label { display: block; font-weight: 650; font-size: .92rem; }
+.dn-the input,
+.dn-the select,
+.dn-ketqua {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  padding: 12px 13px;
+  border: 1px solid #b8c9d8;
+  border-radius: 10px;
+  font: inherit;
+  color: #123252;
+  background: #fff;
+}
+.dn-the input:focus-visible,
+.dn-the select:focus-visible,
+.dn-the button:focus-visible {
+  outline: 3px solid #21a6b8;
+  outline-offset: 2px;
+}
+
+/* Ô mật khẩu kèm nút Hiện/Ẩn nằm cùng hàng.
+   Ghi rõ cả ba giá trị flex cho từng bên thay vì để trình duyệt tự suy: bản
+   trước chỉ đặt `flex: 1` cho ô nhập và không nói gì về nút, kết quả là nút
+   chiếm 356px còn ô nhập teo lại còn 28px — gõ mật khẩu không nhìn thấy gì.
+   `min-width: 0` là mấu chốt: mặc định mỗi phần tử flex không co nhỏ hơn nội
+   dung tối thiểu của nó, và với thẻ <input> con số đó khá lớn. */
+.dn-hang {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  align-items: stretch;
+  margin-top: 6px;
+}
+.dn-hang input { flex: 1 1 auto; width: auto; min-width: 0; margin-top: 0; }
+.dn-hang .dn-nho { flex: 0 0 auto; width: auto; align-self: auto; margin-top: 0; white-space: nowrap; }
+
+.dn-chinh {
+  margin-top: 6px;
+  padding: 13px;
+  border: 0;
+  border-radius: 10px;
+  background: #173e75;
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.dn-chinh:disabled { opacity: .6; cursor: wait; }
+
+/* `width: auto` KHÔNG thừa. app/globals.css có luật toàn cục `button{width:100%}`
+   áp cho MỌI nút trong ứng dụng, nên nút nào nằm trong một hàng flex mà không
+   tự đặt lại width sẽ lấy cả hàng: ở đây nút "Hiện" từng chiếm 392px còn ô mật
+   khẩu teo còn 28px, gõ vào không nhìn thấy gì. Cả dự án đều phải né luật đó —
+   xem ghi chú tương tự ở app/v11.css dòng 375. */
+.dn-nho {
+  width: auto;
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 11px 14px;
+  border: 1px solid #b8c9d8;
+  border-radius: 10px;
+  background: #f6f9fc;
+  color: #123252;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dn-loi {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #ffeef0;
+  color: #a51f2b;
+  font-size: .88rem;
+}
+
+.dn-ghi { margin: 0; color: #66798a; font-size: .8rem; line-height: 1.5; }
+
+/* Dòng tài khoản rất dài — cho xuống dòng để chép được trọn vẹn. */
+.dn-ketqua {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: .78rem;
+  word-break: break-all;
+  resize: vertical;
+}
+
+@media (max-width: 520px) {
+  .dn-the { padding: 24px 20px; }
+}
+
+/* Nhãn tài khoản góc trên bên phải.
+   Cố ý nhỏ và mờ: nó nằm đè lên giao diện soạn bài nên phải kín đáo, chỉ rõ nét
+   khi trỏ chuột vào. Nếu che mất nút nào đó của trình soạn bài thì đổi
+   `top`/`right` ở đây, không phải sửa component. */
+.tk-nhan {
+  position: fixed;
+  top: 8px;
+  right: 10px;
+  z-index: 2147483000;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 9px;
+  border: 1px solid #ffffff44;
+  border-radius: 999px;
+  background: #123252cc;
+  color: #fff;
+  font: 600 12px/1.2 system-ui, "Segoe UI", Arial, sans-serif;
+  opacity: .55;
+  transition: opacity .15s;
+  backdrop-filter: blur(4px);
+}
+.tk-nhan:hover,
+.tk-nhan:focus-within { opacity: 1; }
+
+.tk-nhan button {
+  width: auto;      /* né `button{width:100%}` của globals.css */
+  margin-top: 0;
+  padding: 3px 9px;
+  border: 1px solid #ffffff55;
+  border-radius: 999px;
+  background: #ffffff1f;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.tk-nhan button:disabled { opacity: .6; cursor: wait; }
+
+@media print { .tk-nhan { display: none; } }

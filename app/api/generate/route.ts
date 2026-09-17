@@ -22,13 +22,40 @@ import { callOpenAI } from "@/lib/openai-client";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-/** Chặn lạm dụng đơn giản theo IP — đủ cho quy mô một trường. */
+/**
+ * Chặn lạm dụng theo IP.
+ *
+ * ĐỌC KỸ TRƯỚC KHI TIN VÀO NÓ. Bộ đếm này nằm trong RAM của MỘT instance
+ * serverless, nên nó KHÔNG phải một lớp bảo vệ thật:
+ *   • mỗi instance đếm riêng — người gọi nhiều rơi vào instance khác là được
+ *     thêm một lượt đầy;
+ *   • khởi động nguội là bộ đếm về 0.
+ * Nó chỉ chặn được người bấm nhầm liên tục, không chặn được ai cố ý.
+ *
+ * Muốn chặn thật thì cần hai thứ, cả hai đều nằm ngoài tệp này:
+ *   1. Một lớp xác thực trước /api/* (chưa có — trang đang mở cho mọi người).
+ *   2. Bộ đếm dùng chung, ví dụ Vercel KV / Upstash Redis, thay cho Map này.
+ * Và bất kể chọn gì, hãy đặt Spend limit trên tài khoản OpenAI: đó là lưới an
+ * toàn duy nhất không phụ thuộc vào mã nguồn.
+ */
 const hits = new Map<string, { count: number; resetAt: number }>();
 const WINDOW_MS = 60_000;
 const MAX_PER_WINDOW = 8;
+/* Dọn định kỳ để Map không phình mãi. Bản trước không hề xoá entry cũ: mỗi địa
+   chỉ IP mới thêm một ô nhớ và không bao giờ được trả lại, nên một instance
+   sống lâu sẽ ngốn bộ nhớ dần cho tới khi bị nền tảng giết. */
+const MAX_TRACKED_IPS = 10_000;
+
+function pruneExpired(now: number) {
+  for (const [ip, rec] of hits) if (now > rec.resetAt) hits.delete(ip);
+  /* Lưới an toàn cuối: nếu vẫn quá đông (bị dội từ rất nhiều IP cùng lúc) thì
+     bỏ hẳn, thà mất bộ đếm một nhịp còn hơn để instance chết vì hết bộ nhớ. */
+  if (hits.size > MAX_TRACKED_IPS) hits.clear();
+}
 
 function rateLimited(ip: string): boolean {
   const now = Date.now();
+  pruneExpired(now);
   const rec = hits.get(ip);
   if (!rec || now > rec.resetAt) {
     hits.set(ip, { count: 1, resetAt: now + WINDOW_MS });

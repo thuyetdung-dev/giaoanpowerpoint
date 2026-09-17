@@ -6,6 +6,3 @@ out
 _build
 tsconfig.tsbuildinfo
 .measure
-_build
-tsconfig.tsbuildinfo
-.measure
