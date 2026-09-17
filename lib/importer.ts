@@ -41,16 +41,27 @@ export async function readSource(file: File): Promise<SourceDoc> {
       const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
       pdfjs.GlobalWorkerOptions.workerSrc =
         `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/legacy/build/pdf.worker.min.mjs`;
-      const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
-      soTrang = pdf.numPages;
-      const pages: string[] = [];
-      for (let i = 1; i <= Math.min(pdf.numPages, 80); i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        pages.push(content.items.map((item) => ("str" in item ? item.str : "")).join(" "));
+      /* GIỮ LẠI "loading task", đừng chỉ giữ mỗi `pdf`.
+         pdf.js v6 đã GỠ `pdf.destroy()` khỏi PDFDocumentProxy; muốn đóng tệp và
+         tắt worker thì phải gọi destroy() trên chính tác vụ nạp. Bản v5 cũ viết
+         `await pdf.destroy()` — lên v6 là lỗi ngay lúc chạy, mà bước dựng không
+         hề báo. Bước kiểm tra kiểu (tsc) mới là thứ bắt được. */
+      const tacVuNap = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+      try {
+        const pdf = await tacVuNap.promise;
+        soTrang = pdf.numPages;
+        const pages: string[] = [];
+        for (let i = 1; i <= Math.min(pdf.numPages, 80); i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          pages.push(content.items.map((item) => ("str" in item ? item.str : "")).join(" "));
+        }
+        text = pages.join("\n");
+      } finally {
+        /* finally: tệp hỏng giữa chừng thì worker vẫn phải được tắt, nếu không
+           mỗi lần nhập hụt lại bỏ lại một worker treo trong trình duyệt. */
+        await tacVuNap.destroy();
       }
-      text = pages.join("\n");
-      await pdf.destroy();
     } else {
       throw new Error(`Chưa hỗ trợ tệp .${ext}`);
     }

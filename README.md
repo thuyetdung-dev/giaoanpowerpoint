@@ -57,6 +57,35 @@ kiểm tra tự động canh điều này.
 
 Import repository vào Vercel, thêm biến môi trường `GEMINI_API_KEY` và Deploy. Không đặt khóa API trong mã nguồn hay biến `NEXT_PUBLIC_*`.
 
+## Cấu trúc app/ (dọn dần từ V12.12)
+
+`app/page.tsx` từng là một tệp 1630 dòng với 51 hook. Đang tách dần theo nhóm
+trạng thái, mỗi đợt một nhóm, mỗi đợt đối chiếu ảnh chụp trước/sau:
+
+| | |
+|---|---|
+| `app/hooks/useOcr.ts` | trạng thái + logic đọc PDF ảnh quét |
+| `app/components/KhungOcr.tsx` | giao diện của nhóm OCR |
+| `app/components/LibraryPanel.tsx` | danh sách bài giảng đã lưu |
+
+Nguyên tắc khi tách: **không đổi hành vi**. Bê nguyên từng dòng, kể cả lời văn
+thông báo. Cách nghiệm thu là chụp màn hình cùng một kịch bản trước và sau, rồi
+so từng điểm ảnh — đợt V12.12 cho hai ảnh trùng mã băm.
+
+Nhóm còn lại (nội dung bài, nguồn AI, biên tập, trình chiếu, thư viện) vẫn ở
+`page.tsx`. Riêng **trạng thái thư viện** cố ý để lại: `setActiveId()` được gọi
+từ bảy chỗ trong vòng đời trình biên tập, gỡ ra là việc riêng cần kiểm thử riêng.
+
+## pdf.js
+
+Ghim từ **v6** trở lên. v6 đã gỡ `PDFDocumentProxy.destroy()` — phải gọi
+`destroy()` trên *tác vụ nạp* (`getDocument(...)`), nếu không sẽ lỗi lúc chạy mà
+bước dựng không báo. Có hai phép kiểm tra tự động canh việc này trong `tests.mjs`.
+
+Sau mỗi lần nâng cấp `pdfjs-dist`, mở `scripts/thu-pdfjs.html` và thử bằng một
+tệp PDF thật (xem hướng dẫn ngay trong tệp) — nó chạy đúng những lời gọi mà
+`lib/importer.ts` và `lib/ocr.ts` dùng, kể cả việc vẽ trang ra canvas cho OCR.
+
 ## Visual Specification
 
 Các hình Toán không được AI xuất thành ảnh. AI chỉ sinh JSON có cấu trúc; ứng dụng tự dựng `formula`, `variation_table`, `sign_chart` và `graph`. Điều này giúp hình nhất quán, có thể kiểm tra và sửa dữ liệu độc lập.

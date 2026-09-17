@@ -815,5 +815,47 @@ eq("prompt dùng lại nguyên bộ quy tắc hình của phần mềm", pr.incl
   }
 }
 
+
+/* ------------------------------------------------------------------ */
+/* V12.12 — pdf.js v6: destroy() chuyển sang "loading task"            */
+/* ------------------------------------------------------------------ */
+{
+  const { readFileSync } = await import("node:fs");
+  const boChuThich = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+
+  /* pdf.js v6 đã GỠ PDFDocumentProxy.destroy(). Gọi `pdf.destroy()` sẽ lỗi
+     LÚC CHẠY — đúng lúc giáo viên vừa tải tài liệu lên — mà bước dựng không
+     hề báo. Phải gọi destroy() trên tác vụ nạp: getDocument(...).destroy(). */
+  /* Không dò chuỗi "pdf.destroy" — bẫy đó hụt ngay: `(pdf as any).destroy()`
+     lọt qua, mà đó chính là cách người ta hay viết để cho TypeScript im.
+     Nên đảo lại: LIỆT KÊ mọi lời gọi .destroy() rồi đòi chúng phải gọi trên
+     tác vụ nạp. Quy tắc này đúng với mọi cách viết, kể cả có ép kiểu. */
+  const phamLoi = [];
+  for (const tep of ["lib/ocr.ts", "lib/importer.ts"]) {
+    const ma = boChuThich(readFileSync(tep, "utf8"));
+    const nguoiNhan = [...ma.matchAll(/([A-Za-z_$][\w$]*)\s*(?:as\s+[^)]+)?\)?\s*\.destroy\s*\(/g)].map((m) => m[1]);
+    for (const ten of nguoiNhan) if (ten !== "tacVuNap") phamLoi.push(`${tep}: ${ten}.destroy()`);
+  }
+  eq("destroy() chỉ gọi trên tác vụ nạp (pdf.js v6 đã gỡ pdf.destroy)", phamLoi, []);
+
+  /* MỞ BAO NHIÊU LẦN THÌ PHẢI ĐÓNG BẤY NHIÊU LẦN.
+     Chỉ hỏi "có destroy() không" là chưa đủ: lib/ocr.ts mở tệp ở HAI hàm
+     (soTrangPdf và ocrPdf), bỏ sót một chỗ thì phép kiểm tra kiểu đó vẫn xanh
+     mà mỗi lần nhập tệp lại bỏ lại một worker treo trong trình duyệt. */
+  const demKhop = [];
+  for (const tep of ["lib/ocr.ts", "lib/importer.ts"]) {
+    const ma = boChuThich(readFileSync(tep, "utf8"));
+    const mo = (ma.match(/getDocument\s*\(/g) || []).length;
+    const dong = (ma.match(/\.destroy\s*\(/g) || []).length;
+    if (mo !== dong) demKhop.push(`${tep}: mở ${mo} lần, đóng ${dong} lần`);
+  }
+  eq("mở bao nhiêu tệp PDF thì đóng bấy nhiêu", demKhop, []);
+
+  /* Bản đang cài phải là v6 trở lên — nếu ai đó lùi về v5, hai điều trên lại
+     sai ngược, nên khoá luôn cả phiên bản. */
+  const duoi = String(PKG.dependencies["pdfjs-dist"] || "").replace(/^\^|~/, "");
+  eq("pdfjs-dist ghim từ v6 trở lên", Number(duoi.split(".")[0]) >= 6, true);
+}
+
 console.log(`\n${pass} kiểm thử đạt, ${fail} lỗi`);
 process.exit(fail?1:0);
