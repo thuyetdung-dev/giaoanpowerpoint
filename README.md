@@ -24,6 +24,35 @@ Từ V12.11, GitHub Actions chạy đúng lệnh này ở **mỗi lần push và
 
 `tsconfig.json` đã bật `"strict": true`. Đừng tắt lại để cho qua một lỗi kiểu: lỗi đó là thật.
 
+## Đăng nhập (V12.11)
+
+Trang **không mở cho mọi người**. Middleware chặn mọi đường dẫn — kể cả
+`/api/generate`, tuyến tiêu tiền khoá AI — trước khi yêu cầu chạm tới mã ứng dụng.
+Thiếu cấu hình thì phần mềm **khoá lại**, không mở ra.
+
+Cần hai biến môi trường:
+
+| Biến | Nội dung |
+|---|---|
+| `AUTH_SECRET` | chuỗi ngẫu nhiên ≥ 32 ký tự, dùng để ký cookie phiên. Đổi nó = buộc mọi người đăng nhập lại |
+| `TEACHERS` | danh sách tài khoản, mỗi người một dòng, ngăn nhau bằng `;` |
+
+Mỗi dòng có dạng `tên|vai trò|salt|hash` (vai trò: `admin` hoặc `teacher`).
+**Đừng tự gõ tay** — mở trang `/tao-tai-khoan` của chính phần mềm, nhập tên và mật
+khẩu, nó in ra sẵn dòng để dán vào `TEACHERS`.
+
+Mật khẩu được băm **ngay tại trình duyệt** (PBKDF2-SHA256, 210.000 vòng) nên không
+bao giờ đi qua mạng, và biến `TEACHERS` không chứa mật khẩu thật. Giáo viên có thể
+tự mở trang đó, tự chọn mật khẩu, rồi chỉ đưa dòng kết quả cho quản trị.
+
+Trang `/tao-tai-khoan` cố ý để ai cũng vào được: nó chỉ là một phép tính chạy tại
+máy người dùng, không cấp quyền gì. Che nó lại thì chính quản trị cũng không tạo
+nổi tài khoản đầu tiên.
+
+`lib/auth.ts` chỉ dùng **Web Crypto**, tuyệt đối không `node:crypto` — vì nó phải
+chạy được ở cả middleware (Edge), route handler (Node) và trình duyệt. Có một phép
+kiểm tra tự động canh điều này.
+
 ## Triển khai Vercel
 
 Import repository vào Vercel, thêm biến môi trường `GEMINI_API_KEY` và Deploy. Không đặt khóa API trong mã nguồn hay biến `NEXT_PUBLIC_*`.

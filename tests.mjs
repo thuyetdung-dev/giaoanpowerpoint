@@ -15,6 +15,7 @@ import { promptChoAiNgoai, VISUAL_SPEC } from "./_build/lib/prompt.js";
 import { docTuOCR, LoiCanOCR } from "./_build/lib/importer.js";
 import { ghepTrang, coChuKhong, NGUON_MAC_DINH, TOI_DA_TRANG } from "./_build/lib/ocr.js";
 import { PROVIDERS } from "./_build/lib/ai.js";
+import * as Auth from "./_build/lib/auth.js";
 import { createRequire } from "node:module";
 const PKG = createRequire(import.meta.url)("./package.json");
 
@@ -709,6 +710,109 @@ eq("prompt dùng lại nguyên bộ quy tắc hình của phần mềm", pr.incl
     if (m) phamLoi.push(`${tep}: ${[...new Set(m)].join(", ")}`);
   }
   eq("không tệp mã nguồn nào ghi cứng số phiên bản", phamLoi, []);
+}
+
+
+/* ------------------------------------------------------------------ */
+/* V12.11 — Tài khoản riêng từng giáo viên                             */
+/* ------------------------------------------------------------------ */
+{
+  const SECRET = "x".repeat(40);
+
+  /* --- Mật khẩu --- */
+  {
+    const salt = Auth.randomSalt();
+    const hash = await Auth.hashPassword("MatKhauRatDai2026", salt);
+    eq("băm đúng mật khẩu thì nhận", await Auth.verifyPassword("MatKhauRatDai2026", salt, hash), true);
+    eq("sai một ký tự là từ chối", await Auth.verifyPassword("MatKhauRatDai2027", salt, hash), false);
+    eq("mật khẩu rỗng không lọt", await Auth.verifyPassword("", salt, hash), false);
+
+    /* Cùng mật khẩu, khác salt thì phải ra hai bản băm khác nhau. Nếu giống
+       nhau tức là salt không được dùng, và hai giáo viên đặt trùng mật khẩu sẽ
+       lộ ra điều đó ngay trong biến TEACHERS. */
+    const hash2 = await Auth.hashPassword("MatKhauRatDai2026", Auth.randomSalt());
+    eq("mỗi tài khoản một salt riêng", hash === hash2, false);
+
+    /* Bản băm không được chứa lại mật khẩu dưới bất kỳ dạng nào. */
+    eq("bản băm không lộ mật khẩu", hash.includes("MatKhauRatDai"), false);
+  }
+
+  /* --- Danh sách tài khoản --- */
+  {
+    const ds = Auth.parseAccounts("dung|admin|S1|H1; hoa|teacher|S2|H2\nnam|teacher|S3|H3");
+    eq("đọc được danh sách nhiều tài khoản", ds.map((a) => a.user), ["dung", "hoa", "nam"]);
+    eq("giữ đúng vai trò", ds.map((a) => a.role), ["admin", "teacher", "teacher"]);
+    eq("dòng thiếu trường bị bỏ qua", Auth.parseAccounts("hong|teacher").length, 0);
+    eq("biến rỗng cho danh sách rỗng", Auth.parseAccounts(undefined), []);
+    eq("tìm tài khoản không phân biệt hoa thường", Auth.findAccount(ds, "DUNG")?.role, "admin");
+    eq("tìm tài khoản không có thì trả undefined", Auth.findAccount(ds, "khong-co"), undefined);
+  }
+
+  /* --- Phiên đăng nhập --- */
+  {
+    const token = await Auth.signToken({ u: "hoa", r: "teacher", exp: Date.now() + 60_000 }, SECRET);
+    eq("token hợp lệ đọc lại đúng người", (await Auth.verifyToken(token, SECRET))?.u, "hoa");
+    eq("sai khoá bí mật là từ chối", await Auth.verifyToken(token, "y".repeat(40)), null);
+
+    /* Sửa phần thân để tự phong quản trị — chữ ký phải chặn lại. */
+    const gia = Auth.bytesToB64url(new TextEncoder().encode(JSON.stringify({ u: "hoa", r: "admin", exp: Date.now() + 60_000 })));
+    eq("sửa vai trò trong token là từ chối", await Auth.verifyToken(`${gia}.${token.split(".")[1]}`, SECRET), null);
+
+    const hetHan = await Auth.signToken({ u: "hoa", r: "teacher", exp: Date.now() - 1000 }, SECRET);
+    eq("token hết hạn là từ chối", await Auth.verifyToken(hetHan, SECRET), null);
+    eq("không có token là từ chối", await Auth.verifyToken(undefined, SECRET), null);
+    eq("token rác không làm vỡ chương trình", await Auth.verifyToken("rac", SECRET), null);
+  }
+
+  /* --- Cookie --- */
+  {
+    const ck = Auth.sessionCookie("abc", 3600);
+    eq("cookie đặt HttpOnly", /HttpOnly/.test(ck), true);
+    eq("cookie đặt SameSite", /SameSite=Lax/.test(ck), true);
+    eq("đọc lại được cookie phiên", Auth.readCookie(`a=1; ${Auth.COOKIE_NAME}=xyz; b=2`), "xyz");
+    eq("không có cookie thì trả chuỗi rỗng", Auth.readCookie("a=1"), "");
+  }
+
+  /* --- Thiếu cấu hình thì KHOÁ, không mở --- */
+  {
+    eq("thiếu cả hai biến là chưa cấu hình", Auth.authConfigured({}), false);
+    eq("khoá bí mật quá ngắn là chưa cấu hình",
+       Auth.authConfigured({ AUTH_SECRET: "ngan", TEACHERS: "a|teacher|S|H" }), false);
+    eq("có khoá dài nhưng không có tài khoản là chưa cấu hình",
+       Auth.authConfigured({ AUTH_SECRET: SECRET, TEACHERS: "" }), false);
+    eq("đủ hai biến mới là đã cấu hình",
+       Auth.authConfigured({ AUTH_SECRET: SECRET, TEACHERS: "a|teacher|S|H" }), true);
+  }
+
+  /* --- Ràng buộc kiến trúc --- */
+  {
+    const { readFileSync } = await import("node:fs");
+
+    /* lib/auth.ts chạy ở CẢ middleware (Edge), route handler (Node) và trình
+       duyệt. node:crypto chỉ có ở Node — lỡ import vào là middleware vỡ lúc
+       chạy, mà bước build không hề báo. */
+    /* Bỏ chú thích trước khi quét — y như phép kiểm tra số phiên bản ở cuối
+       tệp này. Chính ghi chú trong lib/auth.ts có nhắc `from "node:crypto"` để
+       kể vì sao KHÔNG được dùng nó; quét cả chú thích là tự bắt phải mình. */
+    const mãAuth = readFileSync("lib/auth.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/^\s*\/\/.*$/gm, " ");
+    eq("lib/auth.ts không dùng node:crypto", /from\s+"node:/.test(mãAuth), false);
+
+    /* Cổng gác phải nằm ở middleware. Nếu ai đó xoá tệp này, mọi tuyến lại mở
+       toang mà không có phép kiểm tra nào kêu lên. */
+    const mw = readFileSync("middleware.ts", "utf8");
+    eq("middleware có kiểm phiên đăng nhập", /verifyToken/.test(mw), true);
+    eq("middleware khoá lại khi chưa cấu hình", /authConfigured/.test(mw), true);
+
+    /* Trang băm mật khẩu phải vào được khi chưa đăng nhập, nếu không thì chính
+       quản trị cũng không tạo nổi tài khoản đầu tiên. */
+    eq("trang tạo tài khoản không bị chặn", /"\/tao-tai-khoan"/.test(mw), true);
+
+    /* Mật khẩu phải được băm tại trình duyệt, không gửi đi đâu. */
+    const tao = readFileSync("app/tao-tai-khoan/page.tsx", "utf8");
+    eq("trang tạo tài khoản không gửi mật khẩu đi", /fetch\(/.test(tao), false);
+  }
 }
 
 console.log(`\n${pass} kiểm thử đạt, ${fail} lỗi`);

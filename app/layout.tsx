@@ -8,7 +8,9 @@ import "./reference.css";
 import "./v9-layout.css";
 import "./v11.css";
 import "./slide.css";
+import "./auth.css";
 import { APP_LABEL } from "@/lib/version";
+import { AccountBadge } from "@/components/AccountBadge";
 
 export const metadata: Metadata = {
   title: `Trợ lý soạn PowerPoint Toán THPT — ${APP_LABEL}`,
@@ -27,7 +29,10 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="vi" suppressHydrationWarning>
-      <body>{children}</body>
+      <body>
+        <AccountBadge />
+        {children}
+      </body>
     </html>
   );
 }
