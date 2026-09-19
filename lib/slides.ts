@@ -608,7 +608,9 @@ export function buildDeck(lesson: Lesson, meta: DeckMeta = {}): SlideSpec[] {
      * 24 pt — đúng cái mà cả bản nâng cấp này đang chống.
      */
     const box = objectivesBox();
-    const pt = fitBodyPt(lesson.objectives, box.w, box.h);
+    const pt = lesson.autoFontSize?.objectivesBody
+      ? Math.max(20, Math.min(48, lesson.autoFontSize.objectivesBody))
+      : fitBodyPt(lesson.objectives, box.w, box.h);
     paginate(lesson.objectives, box.w, box.h, pt).forEach((page, i) => {
       deck.push({ kind: "objectives", items: page, bodyPt: pt, richMath: page.some(needsRichMath), part: i });
     });

@@ -258,4 +258,13 @@ export type Lesson = {
   sections: Section[];
   /** V11: bộ chủ đề trình chiếu. */
   theme?: string;
+  /** Cỡ chữ riêng cho các slide tự động (bìa, yêu cầu, phân cách, kết). */
+  autoFontSize?: {
+    coverTitle?: number;
+    objectivesTitle?: number;
+    objectivesBody?: number;
+    divider?: number;
+    endTitle?: number;
+    endKeywords?: number;
+  };
 };

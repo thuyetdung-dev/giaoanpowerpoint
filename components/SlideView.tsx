@@ -153,7 +153,7 @@ export function SlideBoard({
         <div className="sl-abs" style={{ left: px(1.25), top: px(1.0), fontSize: pt(TYPO.coverKicker), letterSpacing: "0.18em", color: `#${t.accent}`, fontWeight: 700, fontFamily: `"${t.bodyFont}", sans-serif` }}>
           BÀI GIẢNG MÔN TOÁN · THPT
         </div>
-        <div className="sl-abs sl-covertitle" style={{ left: px(1.25), top: px(1.55), width: px(10.8), height: px(1.9), fontSize: pt(TYPO.coverTitle), color: `#${t.coverInk}`, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}>
+        <div className="sl-abs sl-covertitle" style={{ left: px(1.25), top: px(1.55), width: px(10.8), height: px(1.9), fontSize: pt(lesson.autoFontSize?.coverTitle ?? TYPO.coverTitle), color: `#${t.coverInk}`, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}>
           <MixedMath value={lesson.title} />
         </div>
         <div className="sl-abs" style={{ left: px(1.25), top: px(3.7), width: px(2.2), height: 4, background: `#${t.accent}` }} />
@@ -181,7 +181,7 @@ export function SlideBoard({
         <div className="sl-abs" style={{ left: 0, top: px(3.0), width: px(SLIDE_W_IN), height: px(0.1), background: `#${m?.color || t.accent}` }} />
         <div
           className="sl-abs sl-center"
-          style={{ left: 0, top: px(3.25), width: px(SLIDE_W_IN), height: px(1.0), fontSize: pt(TYPO.divider), color: `#${t.coverInk}`, letterSpacing: "0.14em", fontWeight: 700, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}
+          style={{ left: 0, top: px(3.25), width: px(SLIDE_W_IN), height: px(1.0), fontSize: pt(lesson.autoFontSize?.divider ?? TYPO.divider), color: `#${t.coverInk}`, letterSpacing: "0.14em", fontWeight: 700, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}
         >
           {(m?.label || "Hoạt động").toUpperCase()}
         </div>
@@ -192,11 +192,11 @@ export function SlideBoard({
   if (spec.kind === "end") {
     return (
       <div className="sl-body" style={{ background: `#${t.coverBg}` }}>
-        <div className="sl-abs sl-center" style={{ left: px(0.8), top: px(2.9), width: px(11.7), height: px(1.4), fontSize: pt(TYPO.endTitle), color: `#${t.coverInk}`, fontWeight: 700, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}>
+        <div className="sl-abs sl-center" style={{ left: px(0.8), top: px(2.9), width: px(11.7), height: px(1.4), fontSize: pt(lesson.autoFontSize?.endTitle ?? TYPO.endTitle), color: `#${t.coverInk}`, fontWeight: 700, fontFamily: `"${t.headFont}", "Times New Roman", Cambria, "Liberation Serif", serif` }}>
           CẢM ƠN CÁC EM ĐÃ THAM GIA TIẾT HỌC
         </div>
         {lesson.keywords?.length ? (
-          <div className="sl-abs sl-center" style={{ left: px(0.8), top: px(4.45), width: px(11.7), fontSize: pt(TYPO.endKeywords), color: `#${t.accent}`, fontFamily: `"${t.bodyFont}", sans-serif` }}>
+          <div className="sl-abs sl-center" style={{ left: px(0.8), top: px(4.45), width: px(11.7), fontSize: pt(lesson.autoFontSize?.endKeywords ?? TYPO.endKeywords), color: `#${t.accent}`, fontFamily: `"${t.bodyFont}", sans-serif` }}>
             Từ khoá: {lesson.keywords.join(" · ")}
           </div>
         ) : null}
@@ -207,7 +207,7 @@ export function SlideBoard({
   if (spec.kind === "objectives") {
     return (
       <div className="sl-body" style={{ background: `#${t.bg}` }}>
-        <Chrome t={t} title={`Yêu cầu cần đạt${spec.part ? " (tiếp)" : ""}`} number={number} />
+        <Chrome t={t} title={`Yêu cầu cần đạt${spec.part ? " (tiếp)" : ""}`} number={number} titlePt={lesson.autoFontSize?.objectivesTitle} />
         <Footer t={t} lesson={lesson} />
         <Bullets t={t} items={spec.items} size={spec.bodyPt} box={objectivesBox()} />
       </div>
